@@ -56,8 +56,12 @@ show_status() {
 manage_status_displays() {
     local apt_task="$1"
     local apt_status_file="$2"
-    local flatpak_task="$3"
-    local flatpak_status_file="$4"
+    local apt_count_file="$3"
+    local apt_error_file="$4"
+    local flatpak_task="$5"
+    local flatpak_status_file="$6"
+    local flatpak_count_file="$7"
+    local flatpak_error_file="$8"
 
     local delay=0.2
     local spinstr="|/-\\"
@@ -91,9 +95,15 @@ manage_status_displays() {
 
                     printf "\033[K" # Clear current line
                     if [ "$apt_exit_code" -eq 0 ]; then
-                        printf "%-*s ✅ SUCCESS" "$max_len" "$apt_task"
+                        local apt_count=$(cat "$apt_count_file" 2>/dev/null || echo "0")
+                        printf "%-*s ✅ %s packages updated" "$max_len" "$apt_task" "$apt_count"
                     else
-                        printf "%-*s ❌ FAILED (Exit Code: %s)" "$max_len" "$apt_task" "$apt_exit_code"
+                        local apt_error=$(cat "$apt_error_file" 2>/dev/null | head -1)
+                        if [ -z "$apt_error" ]; then
+                            printf "%-*s ❌ FAILED (Exit Code: %s)" "$max_len" "$apt_task" "$apt_exit_code"
+                        else
+                            printf "%-*s ❌ %s" "$max_len" "$apt_task" "$apt_error"
+                        fi
                     fi
                     apt_finished=true
                 else
@@ -104,9 +114,15 @@ manage_status_displays() {
                 local apt_exit=$(cat "$apt_status_file" 2>/dev/null || echo "1")
                 printf "\033[K"
                 if [ "$apt_exit" -eq 0 ]; then
-                    printf "%-*s ✅ SUCCESS" "$max_len" "$apt_task"
+                    local apt_count=$(cat "$apt_count_file" 2>/dev/null || echo "0")
+                    printf "%-*s ✅ %s packages updated" "$max_len" "$apt_task" "$apt_count"
                 else
-                    printf "%-*s ❌ FAILED (Exit Code: %s)" "$max_len" "$apt_task" "$apt_exit"
+                    local apt_error=$(cat "$apt_error_file" 2>/dev/null | head -1)
+                    if [ -z "$apt_error" ]; then
+                        printf "%-*s ❌ FAILED (Exit Code: %s)" "$max_len" "$apt_task" "$apt_exit"
+                    else
+                        printf "%-*s ❌ %s" "$max_len" "$apt_task" "$apt_error"
+                    fi
                 fi
             fi
 
@@ -124,9 +140,15 @@ manage_status_displays() {
 
                     printf "\033[K" # Clear current line
                     if [ "$flatpak_exit_code" -eq 0 ]; then
-                        printf "%-*s ✅ SUCCESS" "$max_len" "$flatpak_task"
+                        local flatpak_count=$(cat "$flatpak_count_file" 2>/dev/null || echo "0")
+                        printf "%-*s ✅ %s packages updated" "$max_len" "$flatpak_task" "$flatpak_count"
                     else
-                        printf "%-*s ❌ FAILED (Exit Code: %s)" "$max_len" "$flatpak_task" "$flatpak_exit_code"
+                        local flatpak_error=$(cat "$flatpak_error_file" 2>/dev/null | head -1)
+                        if [ -z "$flatpak_error" ]; then
+                            printf "%-*s ❌ FAILED (Exit Code: %s)" "$max_len" "$flatpak_task" "$flatpak_exit_code"
+                        else
+                            printf "%-*s ❌ %s" "$max_len" "$flatpak_task" "$flatpak_error"
+                        fi
                     fi
                     flatpak_finished=true
                 else
@@ -137,9 +159,15 @@ manage_status_displays() {
                 local flatpak_exit=$(cat "$flatpak_status_file" 2>/dev/null || echo "1")
                 printf "\033[K"
                 if [ "$flatpak_exit" -eq 0 ]; then
-                    printf "%-*s ✅ SUCCESS" "$max_len" "$flatpak_task"
+                    local flatpak_count=$(cat "$flatpak_count_file" 2>/dev/null || echo "0")
+                    printf "%-*s ✅ %s packages updated" "$max_len" "$flatpak_task" "$flatpak_count"
                 else
-                    printf "%-*s ❌ FAILED (Exit Code: %s)" "$max_len" "$flatpak_task" "$flatpak_exit"
+                    local flatpak_error=$(cat "$flatpak_error_file" 2>/dev/null | head -1)
+                    if [ -z "$flatpak_error" ]; then
+                        printf "%-*s ❌ FAILED (Exit Code: %s)" "$max_len" "$flatpak_task" "$flatpak_exit"
+                    else
+                        printf "%-*s ❌ %s" "$max_len" "$flatpak_task" "$flatpak_error"
+                    fi
                 fi
             fi
 
@@ -159,26 +187,73 @@ manage_status_displays() {
 # Function to handle apt updates and upgrades (runs in background)
 run_apt_updates_background() {
     local status_file="$1"
+    local package_count_file="$2"
+    local error_file="$3"
     local exit_code=0
+    local package_count=0
 
     {
-        sudo apt update && sudo apt full-upgrade -y
+        # Run apt update first
+        if ! sudo apt update; then
+            echo "Failed to update package lists" > "$error_file"
+            echo "1" > "$status_file"
+            return
+        fi
+        
+        # Check how many packages will be upgraded
+        local apt_output
+        apt_output=$(sudo apt list --upgradable 2>/dev/null | grep -v "Listing..." | wc -l)
+        
+        # Run the actual upgrade and capture output
+        if sudo apt full-upgrade -y; then
+            # Extract the number of packages upgraded from the log
+            package_count=$(grep -E "^[0-9]+ upgraded," "$APT_LOG" | sed -E 's/^([0-9]+) upgraded,.*/\1/' | tail -1)
+            if [ -z "$package_count" ]; then
+                package_count="0"
+            fi
+        else
+            # Extract error message
+            tail -n 20 "$APT_LOG" | grep -E "(E:|ERROR:|Failed|failed|Error|error)" | head -1 > "$error_file"
+            if [ ! -s "$error_file" ]; then
+                echo "Package upgrade failed" > "$error_file"
+            fi
+        fi
     } >"$APT_LOG" 2>&1
     exit_code=$?
 
-    # Write the exit code to the status file when truly finished
+    # Write the results to the status files
+    echo "$package_count" > "$package_count_file"
     echo "$exit_code" >"$status_file"
 }
 
 # Function to handle flatpak updates (runs in background)
 run_flatpak_updates_background() {
     local status_file="$1"
+    local package_count_file="$2"
+    local error_file="$3"
     local exit_code=0
+    local package_count=0
 
-    flatpak update -y >"$FLATPAK_LOG" 2>&1
+    {
+        if flatpak update -y; then
+            # Count the number of updated packages from the log
+            # Flatpak shows lines like "ID Branch Op Remote Download"
+            package_count=$(grep -E "(update|install)" "$FLATPAK_LOG" | grep -v "Nothing to do" | grep -E "\.(Application|Runtime|Platform|Locale|Extension)" | wc -l)
+            if [ -z "$package_count" ]; then
+                package_count="0"
+            fi
+        else
+            # Extract error message
+            tail -n 20 "$FLATPAK_LOG" | grep -E "(error:|Error:|Failed|failed)" | head -1 > "$error_file"
+            if [ ! -s "$error_file" ]; then
+                echo "Flatpak update failed" > "$error_file"
+            fi
+        fi
+    } >"$FLATPAK_LOG" 2>&1
     exit_code=$?
 
-    # Write the exit code to the status file when truly finished
+    # Write the results to the status files
+    echo "$package_count" > "$package_count_file"
     echo "$exit_code" >"$status_file"
 }
 
@@ -209,18 +284,22 @@ echo
 # Create temporary status files
 APT_STATUS_FILE=$(mktemp)
 FLATPAK_STATUS_FILE=$(mktemp)
+APT_COUNT_FILE=$(mktemp)
+FLATPAK_COUNT_FILE=$(mktemp)
+APT_ERROR_FILE=$(mktemp)
+FLATPAK_ERROR_FILE=$(mktemp)
 
 # Ensure status files are empty before starting
-rm -f "$APT_STATUS_FILE" "$FLATPAK_STATUS_FILE"
+rm -f "$APT_STATUS_FILE" "$FLATPAK_STATUS_FILE" "$APT_COUNT_FILE" "$FLATPAK_COUNT_FILE" "$APT_ERROR_FILE" "$FLATPAK_ERROR_FILE"
 
 # Start both background tasks
-run_apt_updates_background "$APT_STATUS_FILE" &
+run_apt_updates_background "$APT_STATUS_FILE" "$APT_COUNT_FILE" "$APT_ERROR_FILE" &
 APT_PID=$!
-run_flatpak_updates_background "$FLATPAK_STATUS_FILE" &
+run_flatpak_updates_background "$FLATPAK_STATUS_FILE" "$FLATPAK_COUNT_FILE" "$FLATPAK_ERROR_FILE" &
 FLATPAK_PID=$!
 
 # Show concurrent status displays
-manage_status_displays "Updating APT packages..." "$APT_STATUS_FILE" "Updating Flatpak applications..." "$FLATPAK_STATUS_FILE"
+manage_status_displays "Updating APT packages..." "$APT_STATUS_FILE" "$APT_COUNT_FILE" "$APT_ERROR_FILE" "Updating Flatpak applications..." "$FLATPAK_STATUS_FILE" "$FLATPAK_COUNT_FILE" "$FLATPAK_ERROR_FILE"
 
 # Wait for all background tasks to complete
 wait $APT_PID
@@ -240,7 +319,7 @@ if [[ -z "$FLATPAK_EXIT_CODE" || ! "$FLATPAK_EXIT_CODE" =~ ^[0-9]+$ ]]; then
 fi
 
 # Clean up temp files
-rm -f "$APT_STATUS_FILE" "$FLATPAK_STATUS_FILE"
+rm -f "$APT_STATUS_FILE" "$FLATPAK_STATUS_FILE" "$APT_COUNT_FILE" "$FLATPAK_COUNT_FILE" "$APT_ERROR_FILE" "$FLATPAK_ERROR_FILE"
 
 echo
 echo "✅ All updates completed. Logs available at:"
