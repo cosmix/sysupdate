@@ -8,6 +8,12 @@ LOG_BASE_NAME="system_update_$(date +%Y%m%d_%H%M%S)"
 APT_LOG="${LOG_DIR}/${LOG_BASE_NAME}_apt.log"
 FLATPAK_LOG="${LOG_DIR}/${LOG_BASE_NAME}_flatpak.log"
 
+# Check for verbose mode
+VERBOSE=false
+if [[ "$1" == "-v" ]] || [[ "$1" == "--verbose" ]]; then
+    VERBOSE=true
+fi
+
 mkdir -p "$LOG_DIR"
 
 # --- Color Definitions ---
@@ -83,6 +89,9 @@ manage_status_displays() {
     if [ "$flatpak_len" -gt "$max_len" ]; then
         max_len=$flatpak_len
     fi
+
+    # Hide cursor during animation to prevent occlusion
+    printf "\033[?25l"
 
     # Start display - write two lines that we'll keep updating
     printf "${CYAN}%s${NC}  ${BOLD}%-*s${NC}\n" "${SPIN_FRAMES[0]}" "$max_len" "$apt_task"
@@ -200,9 +209,10 @@ manage_status_displays() {
         # Break early if both finished
         [ "$apt_finished" = true ] && [ "$flatpak_finished" = true ] && break
     done
-    
-    # Final newline to move below both lines
+
+    # Move cursor below both lines and restore cursor visibility
     printf "\n"
+    printf "\033[?25h"
 }
 
 # --- Task Functions (truly silent) ---
@@ -218,23 +228,22 @@ run_apt_updates_background() {
     local newly_installed_count=0
     local apt_output
 
-    # Capture all output (including stderr to prevent UI disruption)
-    apt_output=$(
-        {
-            # Run apt update first
-            if ! sudo apt update 2>&1; then
-                echo "FAILED_UPDATE"
-                exit 1
-            fi
+    # Use tee to save output in real-time while capturing it
+    {
+        # Run apt update first
+        if ! sudo apt update 2>&1 | tee "$APT_LOG"; then
+            echo "FAILED_UPDATE" >> "$APT_LOG"
+            exit_code=1
+        else
+            # Run the actual upgrade (append to same log)
+            sudo apt full-upgrade -y 2>&1 | tee -a "$APT_LOG"
+            exit_code=${PIPESTATUS[0]}
+        fi
+    } > /tmp/apt_output_$$.tmp 2>&1
 
-            # Run the actual upgrade
-            sudo apt full-upgrade -y 2>&1
-        }
-    )
-    exit_code=$?
-
-    # Save output to log
-    echo "$apt_output" > "$APT_LOG"
+    # Read the captured output for parsing
+    apt_output=$(cat /tmp/apt_output_$$.tmp)
+    rm -f /tmp/apt_output_$$.tmp
 
     if [ "$exit_code" -eq 0 ] || echo "$apt_output" | grep -q "^0 upgraded"; then
         # Parse multiple apt output formats
@@ -283,12 +292,14 @@ run_flatpak_updates_background() {
     local package_count=0
     local flatpak_output
 
-    # Capture all output
-    flatpak_output=$(flatpak update -y 2>&1)
-    exit_code=$?
+    # Use tee to save output in real-time while capturing it
+    flatpak_output=$(flatpak update -y 2>&1 | tee "$FLATPAK_LOG")
+    exit_code=${PIPESTATUS[0]}
 
-    # Save output to log
-    echo "$flatpak_output" > "$FLATPAK_LOG"
+    # Re-read the log for parsing (in case tee didn't capture everything)
+    if [ -f "$FLATPAK_LOG" ]; then
+        flatpak_output=$(cat "$FLATPAK_LOG")
+    fi
 
     if [ "$exit_code" -eq 0 ]; then
         # ROBUST PARSING: Handle multiple flatpak output formats
@@ -366,6 +377,12 @@ FLATPAK_PID=$!
 
 # Show starting message
 echo -e "${BOLD}Updating your system...${NC}"
+if [ "$VERBOSE" = true ]; then
+    echo -e "${DIM}Verbose mode enabled - logs are being written to:${NC}"
+    echo -e "${DIM}  • $APT_LOG${NC}"
+    echo -e "${DIM}  • $FLATPAK_LOG${NC}"
+    echo -e "${DIM}You can monitor them in real-time with: tail -f <logfile>${NC}"
+fi
 echo
 
 # Show concurrent status displays
