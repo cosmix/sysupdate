@@ -1,17 +1,66 @@
 #!/bin/bash
 
-# Random Package Downgrade Script
-# Use with caution - this modifies your system packages!
+# Package Downgrade Script for Testing sysupdate
+# Downgrades APT packages and/or Flatpak apps so you can test the update functionality
 
 set -e # Exit on any error
 
 # Configuration
-NUM_PACKAGES=3      # Number of packages to randomly downgrade
+NUM_PACKAGES=3      # Number of packages to downgrade (per type)
 DRY_RUN=false       # Set to true to see what would be done without actually doing it
-HOLD_PACKAGES=false # Whether to hold packages after downgrading
-DO_UPDATE=false     # Whether to run apt update before checking packages
-SKIP_CONFIRM=true   # Whether to skip confirmation prompt
-NO_DEPS=false       # Whether to prevent dependency downgrades
+DO_APT=true         # Whether to downgrade APT packages
+DO_FLATPAK=true     # Whether to downgrade Flatpak apps
+VERBOSE=false       # Show debug output for troubleshooting
+
+# Safe packages to downgrade - common tools that won't break the system
+# These are frequently updated and typically have multiple versions available
+SAFE_PACKAGES=(
+    "curl"
+    "wget"
+    "git"
+    "vim"
+    "nano"
+    "htop"
+    "tree"
+    "jq"
+    "tmux"
+    "neofetch"
+    "zip"
+    "unzip"
+    "rsync"
+    "less"
+    "file"
+    "ncdu"
+    "bat"
+    "ripgrep"
+    "fd-find"
+    "fzf"
+)
+
+# Safe Flatpak apps to downgrade - common apps that are frequently updated
+# These are popular desktop apps with regular updates
+SAFE_FLATPAKS=(
+    "org.mozilla.firefox"
+    "org.mozilla.Thunderbird"
+    "org.libreoffice.LibreOffice"
+    "org.videolan.VLC"
+    "org.gimp.GIMP"
+    "org.inkscape.Inkscape"
+    "org.audacityteam.Audacity"
+    "org.gnome.Calculator"
+    "org.gnome.TextEditor"
+    "org.gnome.Evince"
+    "org.gnome.eog"
+    "org.gnome.Logs"
+    "org.gnome.FileRoller"
+    "org.gnome.font-viewer"
+    "org.freedesktop.Platform"
+    "org.kde.okular"
+    "com.spotify.Client"
+    "com.visualstudio.code"
+    "org.telegram.desktop"
+    "com.slack.Slack"
+)
 
 # Colors for output
 RED='\033[0;31m'
@@ -25,66 +74,24 @@ print_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
 print_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
 print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+print_debug() { [[ "$VERBOSE" == "true" ]] && echo -e "${YELLOW}[DEBUG]${NC} $1"; return 0; }
 
-# Function to check if running as root
-check_root() {
-    if [[ $EUID -eq 0 ]]; then
-        print_error "This script should not be run as root directly."
-        print_info "It will use sudo when needed."
-        exit 1
-    fi
-}
-
-# Function to get installed packages that have multiple versions available
-get_downgradable_packages() {
-    print_info "Finding packages with multiple versions available..." >&2
-
-    local downgradable=()
-    local count=0
-    local checked=0
-
-    while read -r package; do
-        if [[ -z "$package" ]]; then
-            continue
-        fi
-        ((checked++)) || true
-
-        # Skip essential/important packages and those that trigger initrd updates
-        if [[ $package =~ ^(base-files|bash|coreutils|dpkg|libc6|systemd|kernel|linux-|ubuntu-|apt|sudo|initramfs-|dracut|plymouth|cryptsetup|grub|zfs-initramfs|nvidia-dkms).*$ ]]; then
-            continue
-        fi
-
-        # Check if package has multiple versions by actually getting the versions
-        local actual_versions=()
-        local output
-        output=$(apt list -a "$package" 2>/dev/null | grep -v "WARNING" | grep -v "^Listing" | grep -E "^$package/" | awk '{print $2}' | sort -u | head -5)
-        if [[ -n "$output" ]]; then
-            mapfile -t actual_versions <<<"$output"
-        fi
-
-        if [[ ${#actual_versions[@]} -gt 1 ]]; then
-            downgradable+=("$package")
-            ((count++)) || true
-
-            # Limit search to avoid taking too long
-            if [[ $count -ge 50 ]]; then
-                break
-            fi
-        fi
-    done < <(apt list --installed 2>/dev/null | grep -v "^Listing" | cut -d/ -f1)
-    printf '%s\n' "${downgradable[@]}"
+# Function to check if a package is installed
+is_installed() {
+    local package=$1
+    dpkg -l "$package" 2>/dev/null | grep -q "^ii"
 }
 
 # Function to get available versions for a package
 get_package_versions() {
     local package=$1
-    apt list -a "$package" 2>/dev/null | grep -v "WARNING" | grep -v "^Listing" | grep -E "^$package/" | awk '{print $2}' | sort -u | head -5
+    apt-cache madison "$package" 2>/dev/null | awk '{print $3}' | sort -Vu | head -5
 }
 
 # Function to get current version of a package
 get_current_version() {
     local package=$1
-    dpkg -l "$package" 2>/dev/null | tail -1 | awk '{print $3}'
+    dpkg-query -W -f='${Version}' "$package" 2>/dev/null
 }
 
 # Function to downgrade a package
@@ -100,22 +107,8 @@ downgrade_package() {
         return 0
     fi
 
-    # Attempt the downgrade with or without dependencies based on flag
-    local apt_opts="--allow-downgrades"
-    if [[ "$NO_DEPS" == "true" ]]; then
-        apt_opts="$apt_opts --no-install-recommends"
-    fi
-    
-    # shellcheck disable=SC2086
-    if sudo apt install -y $apt_opts "$package=$target_version"; then
+    if sudo apt install -y --allow-downgrades "$package=$target_version"; then
         print_success "Successfully downgraded $package to $target_version"
-
-        # Hold the package if requested
-        if [[ "$HOLD_PACKAGES" == "true" ]]; then
-            sudo apt-mark hold "$package"
-            print_info "Package $package is now held at version $target_version"
-        fi
-
         return 0
     else
         print_error "Failed to downgrade $package"
@@ -123,208 +116,390 @@ downgrade_package() {
     fi
 }
 
-# Function to create restore script
-create_restore_script() {
-    local downgraded_packages=("$@")
-    local restore_script="restore_packages.sh"
+# ============== Flatpak Functions ==============
 
-    cat >"$restore_script" <<'EOF'
-#!/bin/bash
-# Restore script for downgraded packages
-# Generated automatically
+# Function to check if flatpak is available
+has_flatpak() {
+    command -v flatpak &>/dev/null
+}
 
-set -e
+# Function to check if a Flatpak app is installed
+is_flatpak_installed() {
+    local app_id=$1
+    flatpak list --app --columns=application 2>/dev/null | grep -q "^${app_id}$"
+}
 
-echo "Restoring packages to latest versions..."
+# Function to get the remote for a Flatpak app
+get_flatpak_remote() {
+    local app_id=$1
+    # Use tab as field separator since flatpak list uses tabs between columns
+    flatpak list --app --columns=application,origin 2>/dev/null | awk -F'\t' -v app="$app_id" '$1 == app {print $2}'
+}
 
-EOF
+# Function to get current commit of a Flatpak app
+get_flatpak_current_commit() {
+    local app_id=$1
+    flatpak info "$app_id" 2>/dev/null | grep -i "^Commit:" | awk '{print $2}'
+}
 
-    for package in "${downgraded_packages[@]}"; do
-        echo "sudo apt-mark unhold $package" >>"$restore_script"
-        echo "echo \"Unholding $package...\"" >>"$restore_script"
+# Function to get commit history for a Flatpak app
+# Returns older commits (skips current), most recent previous first
+get_flatpak_commits() {
+    local remote=$1
+    local app_id=$2
+    local raw_output
+    raw_output=$(flatpak remote-info --log "$remote" "$app_id" 2>&1)
+
+    if [[ "$VERBOSE" == "true" ]]; then
+        echo "  Raw log output for $app_id:" >&2
+        echo "$raw_output" | head -20 | sed 's/^/    /' >&2
+    fi
+
+    # Get commit history - "Commit:" lines may have leading whitespace
+    # Skip the first commit (current version), return up to 5 older ones
+    echo "$raw_output" | grep -i "Commit:" | awk '{print $2}' | tail -n +2 | head -5
+}
+
+# Function to downgrade a Flatpak app
+downgrade_flatpak() {
+    local app_id=$1
+    local target_commit=$2
+    local current_commit=$3
+
+    print_info "Downgrading $app_id"
+    print_info "  From: ${current_commit:0:12}..."
+    print_info "  To:   ${target_commit:0:12}..."
+
+    if [[ "$DRY_RUN" == "true" ]]; then
+        print_warning "DRY RUN: Would execute: sudo flatpak update -y --commit=$target_commit $app_id"
+        return 0
+    fi
+
+    if sudo flatpak update -y --commit="$target_commit" "$app_id"; then
+        print_success "Successfully downgraded $app_id"
+        return 0
+    else
+        print_error "Failed to downgrade $app_id"
+        return 1
+    fi
+}
+
+# Function to process Flatpak downgrades
+process_flatpak_downgrades() {
+    if ! has_flatpak; then
+        print_warning "Flatpak is not installed, skipping Flatpak downgrades"
+        return 0
+    fi
+
+    print_info "=== Flatpak Downgrades ==="
+    echo
+
+    # Find installed Flatpak apps from our safe list
+    local candidates=()
+    print_info "Finding installed Flatpak apps from safe list..."
+    for app in "${SAFE_FLATPAKS[@]}"; do
+        if is_flatpak_installed "$app"; then
+            candidates+=("$app")
+        fi
     done
 
-    echo "" >>"$restore_script"
-    echo "sudo apt update" >>"$restore_script"
-    echo "sudo apt upgrade -y" >>"$restore_script"
-    echo "echo \"All packages restored!\"" >>"$restore_script"
+    if [[ ${#candidates[@]} -eq 0 ]]; then
+        print_warning "No suitable Flatpak apps found from safe list"
+        return 0
+    fi
 
-    chmod +x "$restore_script"
-    print_success "Created restore script: $restore_script"
+    print_info "Found ${#candidates[@]} installed Flatpak app(s) from safe list"
+
+    # Shuffle and select apps
+    local selected=()
+    local shuffled=()
+    mapfile -t shuffled < <(printf '%s\n' "${candidates[@]}" | shuf)
+
+    for app in "${shuffled[@]}"; do
+        if [[ ${#selected[@]} -ge $NUM_PACKAGES ]]; then
+            break
+        fi
+
+        # Check if app has older commits available
+        local remote
+        remote=$(get_flatpak_remote "$app")
+        print_debug "App: $app, Remote: '${remote:-<empty>}'"
+        if [[ -z "$remote" ]]; then
+            print_debug "  Skipping $app: no remote found"
+            continue
+        fi
+
+        local commits=()
+        mapfile -t commits < <(get_flatpak_commits "$remote" "$app")
+        print_debug "  Older commits available: ${#commits[@]}"
+
+        if [[ ${#commits[@]} -gt 0 ]]; then
+            selected+=("$app")
+        else
+            print_debug "  Skipping $app: no older commits in history"
+        fi
+    done
+
+    if [[ ${#selected[@]} -eq 0 ]]; then
+        print_warning "No Flatpak apps with older commits available"
+        if [[ "$VERBOSE" != "true" ]]; then
+            print_info "Run with --verbose to see why apps were skipped"
+        fi
+        return 0
+    fi
+
+    print_info "Will downgrade Flatpak apps: ${selected[*]}"
+    echo
+
+    # Downgrade each app
+    local downgraded=()
+    for app in "${selected[@]}"; do
+        local remote
+        remote=$(get_flatpak_remote "$app")
+        local current_commit
+        current_commit=$(get_flatpak_current_commit "$app")
+        local commits=()
+        mapfile -t commits < <(get_flatpak_commits "$remote" "$app")
+
+        if [[ ${#commits[@]} -eq 0 ]]; then
+            print_warning "No older commits for $app"
+            continue
+        fi
+
+        # Use the first older commit (most recent previous version)
+        local target_commit="${commits[0]}"
+
+        if downgrade_flatpak "$app" "$target_commit" "$current_commit"; then
+            downgraded+=("$app")
+        fi
+        echo
+    done
+
+    # Summary
+    if [[ ${#downgraded[@]} -gt 0 ]]; then
+        print_success "Downgraded ${#downgraded[@]} Flatpak app(s): ${downgraded[*]}"
+    else
+        print_warning "No Flatpak apps were downgraded"
+    fi
 }
 
 # Main function
 main() {
-    print_info "Random Package Downgrade Script"
-    print_warning "This script will modify your system packages!"
+    print_info "Package Downgrade Script for Testing"
 
     # Parse command line arguments
     while [[ $# -gt 0 ]]; do
         case $1 in
         --dry-run)
             DRY_RUN=true
-            print_info "Dry run mode enabled"
             shift
             ;;
-        --no-hold)
-            HOLD_PACKAGES=false
-            print_info "Packages will not be held after downgrade"
-            shift
-            ;;
-        --update)
-            DO_UPDATE=true
-            print_info "Will update package lists before checking"
-            shift
-            ;;
-        --count | -n)
+        -n | --count)
             NUM_PACKAGES="$2"
-            print_info "Will attempt to downgrade $NUM_PACKAGES packages"
             shift 2
             ;;
-        --no-deps)
-            NO_DEPS=true
-            print_info "Dependencies will not be downgraded"
+        --apt-only)
+            DO_APT=true
+            DO_FLATPAK=false
             shift
             ;;
-        --skip-confirm | -y)
-            SKIP_CONFIRM=true
+        --flatpak-only)
+            DO_APT=false
+            DO_FLATPAK=true
             shift
             ;;
-        --help | -h)
-            echo "Usage: $0 [OPTIONS]"
+        -v | --verbose)
+            VERBOSE=true
+            shift
+            ;;
+        -h | --help)
+            echo "Usage: $0 [OPTIONS] [PACKAGES...]"
+            echo ""
+            echo "Downgrades APT packages and/or Flatpak apps so you can test sysupdate."
+            echo ""
             echo "Options:"
-            echo "  --dry-run       Show what would be done without doing it"
-            echo "  --no-hold       Don't hold packages after downgrading"
-            echo "  --update        Update package lists before checking"
-            echo "  --count N       Number of packages to downgrade (default: 3)"
-            echo "  --no-deps       Don't downgrade dependencies"
-            echo "  --skip-confirm  Skip confirmation prompt"
-            echo "  --help          Show this help message"
+            echo "  --dry-run        Show what would be done without doing it"
+            echo "  -n, --count N    Number of packages to downgrade per type (default: 3)"
+            echo "  --apt-only       Only downgrade APT packages"
+            echo "  --flatpak-only   Only downgrade Flatpak apps"
+            echo "  -v, --verbose    Show debug output for troubleshooting"
+            echo "  -h, --help       Show this help message"
+            echo ""
+            echo "If PACKAGES are specified, those APT packages will be downgraded."
+            echo "Otherwise, random packages from safe lists will be chosen."
+            echo ""
+            echo "By default, both APT and Flatpak downgrades are performed."
             exit 0
             ;;
-        *)
+        -*)
             print_error "Unknown option: $1"
             exit 1
+            ;;
+        *)
+            # Positional arguments are package names
+            SPECIFIED_PACKAGES+=("$1")
+            shift
             ;;
         esac
     done
 
-    check_root
+    if [[ $EUID -eq 0 ]]; then
+        print_error "Don't run as root. The script will use sudo when needed."
+        exit 1
+    fi
 
-    if [[ "$DRY_RUN" == "false" && "$SKIP_CONFIRM" == "false" ]]; then
-        read -p "Continue with package downgrade? (y/N): " -n 1 -r
+    # Process APT downgrades
+    if [[ "$DO_APT" == "true" ]]; then
+        process_apt_downgrades
         echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            print_info "Aborted by user"
-            exit 0
-        fi
     fi
 
-    # Update package lists
-    if [[ "$DO_UPDATE" == "true" ]]; then
-        print_info "Updating package lists..."
-        sudo apt update
+    # Process Flatpak downgrades
+    if [[ "$DO_FLATPAK" == "true" ]]; then
+        process_flatpak_downgrades
+        echo
     fi
 
-    # Find downgradable packages
-    local downgradable_packages=()
-    mapfile -t downgradable_packages < <(get_downgradable_packages)
+    # Final summary
+    echo
+    print_info "=== Done ==="
+    print_info "Run 'uv run sysupdate' to update everything back"
+}
 
-    if [[ ${#downgradable_packages[@]} -eq 0 ]]; then
-        print_error "No suitable packages found for downgrading"
-        exit 1
-    fi
-
-    print_info "Found ${#downgradable_packages[@]} packages that can be downgraded"
-
-    # Randomly select packages
-    local selected_packages=()
-    local attempts=0
-    local max_attempts=$((${#downgradable_packages[@]} * 2))
-
-    while [[ ${#selected_packages[@]} -lt $NUM_PACKAGES && $attempts -lt $max_attempts ]]; do
-        local random_index=$((RANDOM % ${#downgradable_packages[@]}))
-        local package="${downgradable_packages[$random_index]}"
-
-        # Check if package is already selected
-        if [[ ! " ${selected_packages[*]} " =~ " ${package} " ]]; then
-            selected_packages+=("$package")
-
-        fi
-
-        ((attempts++)) || true
-
-    done
-
-    if [[ ${#selected_packages[@]} -eq 0 ]]; then
-        print_error "Could not select any packages for downgrading"
-        exit 1
-    fi
-
-    print_info "Selected packages for downgrading:"
-    printf '%s\n' "${selected_packages[@]}"
+# Function to process APT downgrades
+process_apt_downgrades() {
+    print_info "=== APT Package Downgrades ==="
     echo
 
-    # Downgrade selected packages
-    local successfully_downgraded=()
+    # Determine which packages to try
+    local candidates=()
+    if [[ ${#SPECIFIED_PACKAGES[@]} -gt 0 ]]; then
+        candidates=("${SPECIFIED_PACKAGES[@]}")
+        print_info "Using specified packages: ${candidates[*]}"
+    else
+        # Find installed packages from our safe list
+        print_info "Finding installed APT packages from safe list..."
+        for pkg in "${SAFE_PACKAGES[@]}"; do
+            if is_installed "$pkg"; then
+                candidates+=("$pkg")
+            fi
+        done
+    fi
 
-    for package in "${selected_packages[@]}"; do
-        print_info "Processing package: $package"
+    if [[ ${#candidates[@]} -eq 0 ]]; then
+        print_warning "No suitable APT packages found"
+        return 0
+    fi
 
-        local current_version
-        current_version=$(get_current_version "$package")
-        local versions=()
-        mapfile -t versions < <(get_package_versions "$package")
+    # Shuffle and select packages
+    local selected=()
+    local shuffled=()
+    mapfile -t shuffled < <(printf '%s\n' "${candidates[@]}" | shuf)
 
-        if [[ ${#versions[@]} -lt 2 ]]; then
-            print_warning "Package $package has no older versions available"
-            continue
+    for pkg in "${shuffled[@]}"; do
+        if [[ ${#selected[@]} -ge $NUM_PACKAGES ]]; then
+            break
         fi
 
-        # Remove the current version from available versions and pick a random older one
-        local older_versions=()
-        for version in "${versions[@]}"; do
-            if [[ "$version" != "$current_version" ]]; then
-                # Ensure we are actually downgrading
-                if dpkg --compare-versions "$version" "lt" "$current_version"; then
-                    older_versions+=("$version")
-                fi
+        # Check if package has an older version available
+        local current_version
+        current_version=$(get_current_version "$pkg")
+        local versions=()
+        mapfile -t versions < <(get_package_versions "$pkg")
+
+        for ver in "${versions[@]}"; do
+            if [[ "$ver" != "$current_version" ]] && dpkg --compare-versions "$ver" lt "$current_version" 2>/dev/null; then
+                selected+=("$pkg")
+                break
+            fi
+        done
+    done
+
+    if [[ ${#selected[@]} -eq 0 ]]; then
+        print_warning "No APT packages with older versions available"
+        return 0
+    fi
+
+    print_info "Will downgrade APT packages: ${selected[*]}"
+    echo
+
+    # Collect all package=version pairs for batch downgrade
+    local pkg_specs=()
+    local pkg_names=()
+    for pkg in "${selected[@]}"; do
+        local current_version
+        current_version=$(get_current_version "$pkg")
+        local versions=()
+        mapfile -t versions < <(get_package_versions "$pkg")
+
+        # Find the first older version
+        local target_version=""
+        for ver in "${versions[@]}"; do
+            if [[ "$ver" != "$current_version" ]] && dpkg --compare-versions "$ver" lt "$current_version" 2>/dev/null; then
+                target_version="$ver"
+                break
             fi
         done
 
-        if [[ ${#older_versions[@]} -eq 0 ]]; then
-            print_warning "No older versions found for $package"
+        if [[ -z "$target_version" ]]; then
+            print_warning "No older version for $pkg"
             continue
         fi
 
-        # Pick a random older version
-        local random_version_index=$((RANDOM % ${#older_versions[@]}))
-        local target_version="${older_versions[$random_version_index]}"
-
-        if downgrade_package "$package" "$target_version" "$current_version"; then
-            successfully_downgraded+=("$package")
-        fi
-
-        echo
+        print_info "Will downgrade $pkg: $current_version → $target_version"
+        pkg_specs+=("${pkg}=${target_version}")
+        pkg_names+=("$pkg")
     done
 
-    # Summary
+    if [[ ${#pkg_specs[@]} -eq 0 ]]; then
+        print_warning "No APT packages with valid downgrade targets"
+        return 0
+    fi
+
     echo
-    print_success "Downgrade operation completed!"
-    print_info "Successfully downgraded ${#successfully_downgraded[@]} packages:"
-    printf '%s\n' "${successfully_downgraded[@]}"
+    print_info "Downgrading ${#pkg_specs[@]} package(s) in a single operation..."
 
-    if [[ ${#successfully_downgraded[@]} -gt 0 ]]; then
-        create_restore_script "${successfully_downgraded[@]}"
+    if [[ "$DRY_RUN" == "true" ]]; then
+        print_warning "DRY RUN: Would execute: sudo apt install -y --allow-downgrades ${pkg_specs[*]}"
+        return 0
+    fi
 
-        if [[ "$HOLD_PACKAGES" == "true" && "$DRY_RUN" == "false" ]]; then
-            echo
-            print_info "Packages are held at their downgraded versions."
-            print_info "To restore them later, run: ./restore_packages.sh"
-            print_info "Or manually: sudo apt-mark unhold <package> && sudo apt upgrade"
+    # Try batch downgrade first
+    if sudo apt install -y --allow-downgrades "${pkg_specs[@]}" 2>/dev/null; then
+        print_success "Successfully downgraded ${#pkg_names[@]} APT package(s): ${pkg_names[*]}"
+        return 0
+    fi
+
+    # Batch failed (likely due to dependency conflicts), fall back to individual downgrades
+    print_warning "Batch downgrade failed due to dependency conflicts, trying individually..."
+    echo
+
+    local downgraded=()
+    local failed=()
+    for i in "${!pkg_specs[@]}"; do
+        local spec="${pkg_specs[$i]}"
+        local name="${pkg_names[$i]}"
+        print_info "Attempting to downgrade $name..."
+        if sudo apt install -y --allow-downgrades "$spec" 2>/dev/null; then
+            print_success "Downgraded $name"
+            downgraded+=("$name")
+        else
+            print_warning "Skipped $name (dependency conflict)"
+            failed+=("$name")
         fi
+    done
+
+    echo
+    if [[ ${#downgraded[@]} -gt 0 ]]; then
+        print_success "Downgraded ${#downgraded[@]} package(s): ${downgraded[*]}"
+    fi
+    if [[ ${#failed[@]} -gt 0 ]]; then
+        print_warning "Skipped ${#failed[@]} package(s) due to conflicts: ${failed[*]}"
     fi
 }
+
+# Initialize array for specified packages
+SPECIFIED_PACKAGES=()
 
 # Run the main function with all arguments
 main "$@"

@@ -1,0 +1,25 @@
+{
+  "include": [
+    "sysupdate",
+    "tests"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    ".venv",
+    "build",
+    "dist"
+  ],
+  "pythonVersion": "3.11",
+  "pythonPlatform": "Linux",
+  "typeCheckingMode": "basic",
+  "reportMissingTypeStubs": false,
+  "reportUnknownParameterType": false,
+  "reportUnknownArgumentType": false,
+  "reportUnknownMemberType": false,
+  "reportUnknownVariableType": false,
+  "reportPrivateUsage": false,
+  "reportIncompatibleMethodOverride": false,
+  "stubPath": "",
+  "venvPath": ".",
+  "venv": ".venv"
+}

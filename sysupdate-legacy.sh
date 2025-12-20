@@ -215,6 +215,89 @@ manage_status_displays() {
     printf "\033[?25h"
 }
 
+# --- Table Display Functions ---
+
+# Display APT packages table with version transitions
+# Reads from file with format: PACKAGE|OLD_VERSION|NEW_VERSION
+display_apt_table() {
+    local data_file="$1"
+
+    if [[ ! -s "$data_file" ]]; then
+        return 0
+    fi
+
+    # Calculate column widths dynamically
+    local max_name=12 max_old=11 max_new=11
+
+    while IFS='|' read -r name old_ver new_ver; do
+        [[ ${#name} -gt $max_name ]] && max_name=${#name}
+        [[ ${#old_ver} -gt $max_old ]] && max_old=${#old_ver}
+        [[ ${#new_ver} -gt $max_new ]] && max_new=${#new_ver}
+    done < "$data_file"
+
+    # Add padding and cap widths
+    max_name=$((max_name + 2)); [[ $max_name -gt 40 ]] && max_name=40
+    max_old=$((max_old + 2)); [[ $max_old -gt 25 ]] && max_old=25
+    max_new=$((max_new + 2)); [[ $max_new -gt 25 ]] && max_new=25
+
+    local total_width=$((max_name + max_old + max_new + 4))
+
+    echo
+    echo -e "  ${BOLD}${WHITE}APT Packages Updated:${NC}"
+    echo
+    printf "  ${DIM}%-${max_name}s %-${max_old}s %-${max_new}s${NC}\n" "Package" "Old Version" "New Version"
+    printf "  ${DIM}"; printf '─%.0s' $(seq 1 $total_width); printf "${NC}\n"
+
+    while IFS='|' read -r name old_ver new_ver; do
+        # Truncate if needed
+        [[ ${#name} -gt $((max_name - 2)) ]] && name="${name:0:$((max_name - 5))}..."
+        [[ ${#old_ver} -gt $((max_old - 2)) ]] && old_ver="${old_ver:0:$((max_old - 5))}..."
+        [[ ${#new_ver} -gt $((max_new - 2)) ]] && new_ver="${new_ver:0:$((max_new - 5))}..."
+
+        printf "  ${WHITE}%-${max_name}s${NC} ${DIM}%-${max_old}s${NC} ${GREEN}%-${max_new}s${NC}\n" \
+            "$name" "$old_ver" "$new_ver"
+    done < "$data_file"
+}
+
+# Display Flatpak apps table
+# Reads from file with format: APP_NAME|BRANCH|SIZE
+display_flatpak_table() {
+    local data_file="$1"
+
+    if [[ ! -s "$data_file" ]]; then
+        return 0
+    fi
+
+    # Calculate column widths dynamically
+    local max_name=15 max_branch=8 max_size=10
+
+    while IFS='|' read -r name branch size; do
+        [[ ${#name} -gt $max_name ]] && max_name=${#name}
+        [[ ${#branch} -gt $max_branch ]] && max_branch=${#branch}
+        [[ ${#size} -gt $max_size ]] && max_size=${#size}
+    done < "$data_file"
+
+    # Add padding and cap widths
+    max_name=$((max_name + 2)); [[ $max_name -gt 45 ]] && max_name=45
+    max_branch=$((max_branch + 2))
+    max_size=$((max_size + 2))
+
+    local total_width=$((max_name + max_branch + max_size + 4))
+
+    echo
+    echo -e "  ${BOLD}${WHITE}Flatpak Applications Updated:${NC}"
+    echo
+    printf "  ${DIM}%-${max_name}s %-${max_branch}s %-${max_size}s${NC}\n" "Application" "Branch" "Size"
+    printf "  ${DIM}"; printf '─%.0s' $(seq 1 $total_width); printf "${NC}\n"
+
+    while IFS='|' read -r name branch size; do
+        [[ ${#name} -gt $((max_name - 2)) ]] && name="${name:0:$((max_name - 5))}..."
+
+        printf "  ${WHITE}%-${max_name}s${NC} ${DIM}%-${max_branch}s${NC} ${CYAN}%-${max_size}s${NC}\n" \
+            "$name" "$branch" "$size"
+    done < "$data_file"
+}
+
 # --- Task Functions (truly silent) ---
 
 # Function to handle apt updates and upgrades (runs in background)
@@ -222,6 +305,7 @@ run_apt_updates_background() {
     local status_file="$1"
     local package_count_file="$2"
     local error_file="$3"
+    local packages_list_file="$4"
     local exit_code=0
     local package_count=0
     local upgraded_count=0
@@ -272,6 +356,16 @@ run_apt_updates_background() {
         fi
         
         echo "$package_count" >"$package_count_file"
+
+        # Extract package details (name|old_version|new_version) from Unpacking lines
+        # Format: "Unpacking package-name (new-version) over (old-version) ..."
+        if [ -n "$packages_list_file" ]; then
+            echo "$apt_output" | \
+                grep -E "^Unpacking [^ ]+ \([^)]+\) over \([^)]+\)" | \
+                sed -E 's/^Unpacking ([^ ]+) \(([^)]+)\) over \(([^)]+)\).*/\1|\3|\2/' | \
+                sort -u > "$packages_list_file"
+        fi
+
         echo "0" >"$status_file"
     else
         # Extract error message
@@ -288,6 +382,7 @@ run_flatpak_updates_background() {
     local status_file="$1"
     local package_count_file="$2"
     local error_file="$3"
+    local packages_list_file="$4"
     local exit_code=0
     local package_count=0
     local flatpak_output
@@ -329,6 +424,24 @@ run_flatpak_updates_background() {
         fi
 
         echo "$package_count" >"$package_count_file"
+
+        # Extract app details (name|branch|size) from numbered list lines
+        # Format: " 1.	   	com.discordapp.Discord	stable	u	flathub	< 113.3 MB"
+        if [ -n "$packages_list_file" ]; then
+            echo "$flatpak_output" | \
+                grep -E "^\s*[0-9]+\." | \
+                grep -v '\.Locale\|\.Extension\|\.Platform\|\.GL\.\|\.Sdk' | \
+                sed -E 's/^\s*[0-9]+\.\s+//' | \
+                awk -F'\t' '{
+                    name=$1; branch=$2; size=$NF;
+                    gsub(/^[[:space:]]+|[[:space:]]+$/, "", name);
+                    gsub(/^[[:space:]]+|[[:space:]]+$/, "", branch);
+                    gsub(/^<[[:space:]]*/, "", size);
+                    gsub(/[[:space:]]+$/, "", size);
+                    if (name != "") print name "|" branch "|" size
+                }' | sort -u > "$packages_list_file"
+        fi
+
         echo "0" >"$status_file"
     else
         # Extract error message
@@ -365,14 +478,16 @@ APT_COUNT_FILE=$(mktemp)
 FLATPAK_COUNT_FILE=$(mktemp)
 APT_ERROR_FILE=$(mktemp)
 FLATPAK_ERROR_FILE=$(mktemp)
+APT_PACKAGES_FILE=$(mktemp)
+FLATPAK_PACKAGES_FILE=$(mktemp)
 
 # Ensure status files are empty before starting
-rm -f "$APT_STATUS_FILE" "$FLATPAK_STATUS_FILE" "$APT_COUNT_FILE" "$FLATPAK_COUNT_FILE" "$APT_ERROR_FILE" "$FLATPAK_ERROR_FILE"
+rm -f "$APT_STATUS_FILE" "$FLATPAK_STATUS_FILE" "$APT_COUNT_FILE" "$FLATPAK_COUNT_FILE" "$APT_ERROR_FILE" "$FLATPAK_ERROR_FILE" "$APT_PACKAGES_FILE" "$FLATPAK_PACKAGES_FILE"
 
 # Start both background tasks
-run_apt_updates_background "$APT_STATUS_FILE" "$APT_COUNT_FILE" "$APT_ERROR_FILE" &
+run_apt_updates_background "$APT_STATUS_FILE" "$APT_COUNT_FILE" "$APT_ERROR_FILE" "$APT_PACKAGES_FILE" &
 APT_PID=$!
-run_flatpak_updates_background "$FLATPAK_STATUS_FILE" "$FLATPAK_COUNT_FILE" "$FLATPAK_ERROR_FILE" &
+run_flatpak_updates_background "$FLATPAK_STATUS_FILE" "$FLATPAK_COUNT_FILE" "$FLATPAK_ERROR_FILE" "$FLATPAK_PACKAGES_FILE" &
 FLATPAK_PID=$!
 
 # Show starting message
@@ -409,9 +524,6 @@ fi
 APT_COUNT=$(cat "$APT_COUNT_FILE" 2>/dev/null || echo "0")
 FLATPAK_COUNT=$(cat "$FLATPAK_COUNT_FILE" 2>/dev/null || echo "0")
 
-# Clean up temp files
-rm -f "$APT_STATUS_FILE" "$FLATPAK_STATUS_FILE" "$APT_COUNT_FILE" "$FLATPAK_COUNT_FILE" "$APT_ERROR_FILE" "$FLATPAK_ERROR_FILE"
-
 echo
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "  ${BOLD}${WHITE}Update Summary${NC}"
@@ -425,11 +537,24 @@ fi
 
 echo -e "  ${DIM}APT packages updated: ${BOLD}$APT_COUNT${NC}"
 echo -e "  ${DIM}Flatpak apps updated: ${BOLD}$FLATPAK_COUNT${NC}"
+
+# Display package tables if updates occurred
+if [[ "$APT_COUNT" -gt 0 ]]; then
+    display_apt_table "$APT_PACKAGES_FILE"
+fi
+
+if [[ "$FLATPAK_COUNT" -gt 0 ]]; then
+    display_flatpak_table "$FLATPAK_PACKAGES_FILE"
+fi
+
 echo
 echo -e "  ${DIM}Logs saved to:${NC}"
 echo -e "  ${DIM}• $APT_LOG${NC}"
 echo -e "  ${DIM}• $FLATPAK_LOG${NC}"
 echo
+
+# Clean up temp files
+rm -f "$APT_STATUS_FILE" "$FLATPAK_STATUS_FILE" "$APT_COUNT_FILE" "$FLATPAK_COUNT_FILE" "$APT_ERROR_FILE" "$FLATPAK_ERROR_FILE" "$APT_PACKAGES_FILE" "$FLATPAK_PACKAGES_FILE"
 
 # Check if debug log exists and has content
 if [ -f "${LOG_DIR}/${LOG_BASE_NAME}_flatpak_debug.log" ]; then
