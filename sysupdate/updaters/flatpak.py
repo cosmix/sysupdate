@@ -79,6 +79,11 @@ class FlatpakUpdater:
         result = UpdateResult(success=False)
         self._logger = UpdateLogger("flatpak")
 
+        # Progress allocation:
+        # - Checking: 0% - 10%
+        # - Downloading/Installing: 10% - 100%
+        checking_end = 0.1
+
         def report(progress: UpdateProgress) -> None:
             if callback:
                 callback(progress)
@@ -86,6 +91,7 @@ class FlatpakUpdater:
         try:
             report(UpdateProgress(
                 phase=UpdatePhase.CHECKING,
+                progress=0.0,
                 message="Checking for Flatpak updates...",
             ))
 
@@ -100,7 +106,23 @@ class FlatpakUpdater:
                     total_packages=len(packages),
                 ))
             else:
-                packages, success, error = await self._run_flatpak_update(report)
+                # Wrapper to scale progress from 0-1 to 0.1-1.0
+                def scaled_callback(update: UpdateProgress) -> None:
+                    if update.phase in (UpdatePhase.DOWNLOADING, UpdatePhase.INSTALLING):
+                        # Scale 0-1 to 0.1-1.0
+                        scaled = checking_end + (update.progress * (1.0 - checking_end))
+                        report(UpdateProgress(
+                            phase=update.phase,
+                            progress=scaled,
+                            total_packages=update.total_packages,
+                            completed_packages=update.completed_packages,
+                            current_package=update.current_package,
+                            message=update.message,
+                        ))
+                    else:
+                        report(update)
+
+                packages, success, error = await self._run_flatpak_update(scaled_callback)
                 result.packages = packages
                 result.success = success
                 result.error_message = error

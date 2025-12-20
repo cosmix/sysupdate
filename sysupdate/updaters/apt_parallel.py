@@ -32,18 +32,40 @@ async def run_parallel_apt_update(
     """
     result = UpdateResult(success=False)
 
+    # Progress allocation:
+    # - Checking (apt update): 0% - 10%
+    # - Downloading: 10% - 50%
+    # - Installing: 50% - 100%
+    checking_end = 0.1
+    download_start = 0.1
+    download_end = 0.5
+    install_start = 0.5
+
     def report(progress: UpdateProgress) -> None:
         if callback:
             callback(progress)
 
     try:
-        # Phase 1: apt update
+        # Phase 1: apt update (0% - 10%)
         report(UpdateProgress(
             phase=UpdatePhase.CHECKING,
+            progress=0.0,
             message="Updating package lists...",
         ))
 
-        success = await run_apt_update(report)
+        # Wrapper to scale apt update progress to 0-10%
+        def checking_progress_callback(update: UpdateProgress) -> None:
+            if update.phase == UpdatePhase.CHECKING and update.progress > 0:
+                scaled = update.progress * checking_end
+                report(UpdateProgress(
+                    phase=update.phase,
+                    progress=scaled,
+                    message=update.message,
+                ))
+            else:
+                report(update)
+
+        success = await run_apt_update(checking_progress_callback)
         if not success:
             result.error_message = "Failed to update package lists"
             result.end_time = datetime.now()
@@ -52,6 +74,7 @@ async def run_parallel_apt_update(
         # Phase 2: Get upgradable packages using AptCacheWrapper
         report(UpdateProgress(
             phase=UpdatePhase.CHECKING,
+            progress=checking_end,  # 10%
             message="Analyzing packages...",
         ))
 
@@ -97,10 +120,11 @@ async def run_parallel_apt_update(
             result.end_time = datetime.now()
             return result
 
-        # Phase 3: Download packages in parallel
+        # Phase 3: Download packages in parallel (10% - 50%)
         total_packages = len(package_infos)
         report(UpdateProgress(
             phase=UpdatePhase.DOWNLOADING,
+            progress=download_start,  # Start at 10%
             message=f"Downloading {total_packages} packages in parallel...",
             total_packages=total_packages,
             completed_packages=0,
@@ -111,12 +135,14 @@ async def run_parallel_apt_update(
         def download_progress_callback(progress_info) -> None:
             """Callback for download progress from aria2."""
             # progress_info is a DownloadProgress object
-            # Calculate overall progress based on aria2's reported percentage
-            pct = progress_info.progress
+            # Scale download progress from 10% to 50%
+            raw_pct = progress_info.progress  # 0.0 to 1.0 from aria2
+            download_range = download_end - download_start  # 0.4
+            scaled_pct = download_start + (raw_pct * download_range)  # 0.1 to 0.5
             report(UpdateProgress(
                 phase=UpdatePhase.DOWNLOADING,
-                progress=pct,
-                completed_packages=int(pct * total_packages),
+                progress=scaled_pct,
+                completed_packages=int(raw_pct * total_packages),
                 total_packages=total_packages,
                 current_package=progress_info.filename or "",
                 speed=progress_info.speed,
@@ -135,23 +161,35 @@ async def run_parallel_apt_update(
             # Fall back to sequential update
             return await run_sequential_update(callback, dry_run)
 
-        report(UpdateProgress(
-            phase=UpdatePhase.INSTALLING,
-            message="Preparing to install...",
-            progress=0.0,
-            total_packages=total_packages,
-        ))
-
-        # Phase 4: Install downloaded packages
+        # Phase 4: Install downloaded packages (50% - 100%)
         report(UpdateProgress(
             phase=UpdatePhase.INSTALLING,
             message="Installing downloaded packages...",
+            progress=install_start,  # Start at 50%
             total_packages=total_packages,
             completed_packages=0,
         ))
 
+        # Create a wrapper callback that scales install progress from 0-1 to 50%-100%
+        install_range = 1.0 - install_start  # 0.5
+
+        def install_progress_callback(update: UpdateProgress) -> None:
+            if update.phase == UpdatePhase.INSTALLING:
+                # Scale: internal 0-1 becomes 0.5-1.0
+                scaled_progress = install_start + (update.progress * install_range)
+                report(UpdateProgress(
+                    phase=update.phase,
+                    progress=scaled_progress,
+                    total_packages=update.total_packages,
+                    completed_packages=update.completed_packages,
+                    current_package=update.current_package,
+                    message=update.message,
+                ))
+            else:
+                report(update)
+
         install_success, install_error = await run_apt_install_from_cache(
-            report, total_packages
+            install_progress_callback, total_packages
         )
 
         if not install_success:

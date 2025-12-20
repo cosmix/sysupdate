@@ -10,7 +10,7 @@ from .apt_cache import is_apt_available
 from .aria2_downloader import Aria2Downloader
 from .apt_parallel import run_parallel_apt_update
 from ..utils.logging import UpdateLogger
-from ..utils.parsing import parse_apt_output, AptUpgradeProgressTracker
+from ..utils.parsing import parse_apt_output, AptUpgradeProgressTracker, AptUpdateProgressTracker
 
 
 class AptUpdater:
@@ -112,26 +112,45 @@ class AptUpdater:
         result = UpdateResult(success=False)
         self._logger = UpdateLogger("apt")
 
+        # Progress allocation:
+        # - Checking (apt update): 0% - 10%
+        # - Downloading + Installing: 10% - 100% (handled by AptUpgradeProgressTracker)
+        checking_end = 0.1
+
         def report(progress: UpdateProgress) -> None:
             if callback:
                 callback(progress)
 
         try:
-            # Phase 1: apt update
+            # Phase 1: apt update (0% - 10%)
             report(UpdateProgress(
                 phase=UpdatePhase.CHECKING,
+                progress=0.0,
                 message="Updating package lists...",
             ))
 
-            success = await self._run_apt_update(report)
+            # Wrapper to scale apt update progress to 0-10%
+            def checking_callback(update: UpdateProgress) -> None:
+                if update.phase == UpdatePhase.CHECKING and update.progress > 0:
+                    scaled = update.progress * checking_end
+                    report(UpdateProgress(
+                        phase=update.phase,
+                        progress=scaled,
+                        message=update.message,
+                    ))
+                else:
+                    report(update)
+
+            success = await self._run_apt_update(checking_callback)
             if not success:
                 result.error_message = "Failed to update package lists"
                 result.end_time = datetime.now()
                 return result
 
-            # Phase 2: apt full-upgrade
+            # Phase 2: apt full-upgrade (10% - 100%)
             report(UpdateProgress(
                 phase=UpdatePhase.DOWNLOADING,
+                progress=checking_end,  # Start at 10%
                 message="Downloading and installing updates...",
             ))
 
@@ -147,7 +166,26 @@ class AptUpdater:
                     total_packages=len(packages),
                 ))
             else:
-                packages, success, error = await self._run_apt_upgrade(report)
+                # Wrapper to scale upgrade progress:
+                # - Downloads (0-0.5) → (0.1-0.5)
+                # - Installing (0.5-1.0) → unchanged
+                def upgrade_callback(update: UpdateProgress) -> None:
+                    if update.phase == UpdatePhase.DOWNLOADING:
+                        # Scale 0-0.5 to 0.1-0.5
+                        # progress 0 → 0.1, progress 0.5 → 0.5
+                        scaled = checking_end + (update.progress * (0.5 - checking_end) / 0.5)
+                        report(UpdateProgress(
+                            phase=update.phase,
+                            progress=scaled,
+                            total_packages=update.total_packages,
+                            completed_packages=update.completed_packages,
+                            current_package=update.current_package,
+                            message=update.message,
+                        ))
+                    else:
+                        report(update)
+
+                packages, success, error = await self._run_apt_upgrade(upgrade_callback)
                 result.packages = packages
                 result.success = success
                 result.error_message = error
@@ -264,7 +302,7 @@ class AptUpdater:
             return False, str(e)
 
     async def _run_apt_update(self, report: ProgressCallback) -> bool:
-        """Run apt update command."""
+        """Run apt update command with progress tracking."""
         try:
             self._process = await asyncio.create_subprocess_exec(
                 "sudo", "apt", "update",
@@ -275,7 +313,9 @@ class AptUpdater:
             if not self._process.stdout:
                 return False
 
+            tracker = AptUpdateProgressTracker()
             collected_output = []
+
             while True:
                 line = await self._process.stdout.readline()
                 if not line:
@@ -285,8 +325,16 @@ class AptUpdater:
                 if self._logger:
                     self._logger.log(decoded)
 
-                # Parse progress from update
-                if "Hit:" in decoded or "Get:" in decoded:
+                # Parse progress from update using the tracker
+                progress = tracker.parse_line(decoded)
+                if progress is not None:
+                    report(UpdateProgress(
+                        phase=UpdatePhase.CHECKING,
+                        progress=progress,
+                        message=decoded[:60],
+                    ))
+                elif "Hit:" in decoded or "Get:" in decoded:
+                    # Fallback for lines that don't advance progress
                     report(UpdateProgress(
                         phase=UpdatePhase.CHECKING,
                         message=decoded[:60],
