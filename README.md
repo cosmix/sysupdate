@@ -85,30 +85,12 @@ sysupdate --version
 - `flatpak` (optional)
 - `aria2` (optional, for parallel downloads)
 
-## Project Structure
-
-```
-sysupdate/
-├── __main__.py           # CLI entry point
-├── app.py                # Main CLI application (Rich)
-├── updaters/
-│   ├── base.py           # Protocol definitions
-│   ├── apt.py            # APT updater
-│   ├── apt_parallel.py   # Parallel download orchestration
-│   ├── apt_cache.py      # python3-apt integration
-│   ├── aria2_downloader.py  # aria2c download manager
-│   └── flatpak.py        # Flatpak updater
-├── utils/
-│   ├── logging.py        # Log file management
-│   └── parsing.py        # Output parsing & progress tracking
-└── widgets/              # Textual widgets (for future TUI)
-```
-
 ## Log Files
 
 Logs are saved to `/tmp/update_logs/`:
 
 ```
+sysupdate_YYYYMMDD_HHMMSS_main.log
 sysupdate_YYYYMMDD_HHMMSS_apt.log
 sysupdate_YYYYMMDD_HHMMSS_flatpak.log
 ```
