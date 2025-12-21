@@ -11,6 +11,7 @@ from rich.progress import (
     TaskProgressColumn,
     TimeElapsedColumn,
 )
+from rich.prompt import Confirm
 from rich.table import Table
 from rich.text import Text
 
@@ -102,6 +103,110 @@ class SysUpdateCLI:
             return text[:self.DESC_WIDTH]
         return text
 
+    async def _handle_aria2_warning(self) -> bool:
+        """Display prominent aria2 warning and offer to install it.
+
+        Returns:
+            True if aria2 is now available, False otherwise.
+        """
+        # Barber-pole border - yellow and dim (works on light and dark terminals)
+        border_segments = []
+        for i in range(48):
+            if i % 2 == 0:
+                border_segments.append("[bold yellow]█[/]")
+            else:
+                border_segments.append("[dim]░[/]")
+        border = "".join(border_segments)
+
+        # Yellow warning triangle - smooth edges with half blocks
+        triangle = [
+            "              [bold yellow]▄[/]",
+            "             [bold yellow]▟█▙[/]",
+            "            [bold yellow]▟███▙[/]",
+        ]
+
+        # Print the warning box
+        self.console.print()
+        self.console.print(f"  {border}")
+        self.console.print()
+
+        for line in triangle:
+            self.console.print(line)
+
+        self.console.print()
+        self.console.print("  [bold]aria2c is not installed[/]")
+        self.console.print("  [dim]Downloads will be sequential (slower)[/]")
+        self.console.print()
+        self.console.print("  aria2 enables parallel package downloads,")
+        self.console.print("  significantly speeding up large updates.")
+        self.console.print()
+        self.console.print(f"  {border}")
+        self.console.print()
+
+        # Prompt user
+        loop = asyncio.get_running_loop()
+        install = await loop.run_in_executor(
+            None,
+            lambda: Confirm.ask(
+                "  [yellow]I can install aria2 right now. It'll only take a few seconds.[/]",
+                console=self.console,
+                default=True,
+            ),
+        )
+
+        if not install:
+            self.console.print()
+            self.console.print("  [dim]Continuing with standard apt. This will take longer![/]")
+            self.console.print()
+            return False
+
+        return await self._install_aria2()
+
+    async def _install_aria2(self) -> bool:
+        """Install aria2 using apt.
+
+        Returns:
+            True if installation succeeded, False otherwise.
+        """
+        self.console.print()
+        self.console.print("  [cyan]Installing aria2...[/]")
+        self.console.print()
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "sudo", "apt", "install", "-y", "aria2",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+
+            if process.stdout:
+                async for line in process.stdout:
+                    decoded = line.decode().strip()
+                    if decoded:
+                        self.console.print(f"  [dim]{decoded}[/]")
+
+            returncode = await process.wait()
+
+            if returncode == 0:
+                self.console.print()
+                self.console.print("  [green]✓ aria2 installed successfully![/]")
+                self.console.print("  [dim]Parallel downloads are now enabled.[/]")
+                self.console.print()
+                return True
+            else:
+                self.console.print()
+                self.console.print("  [red]✗ Failed to install aria2.[/]")
+                self.console.print("  [dim]Continuing with standard apt. This will take longer![/]")
+                self.console.print()
+                return False
+
+        except Exception as e:
+            self.console.print()
+            self.console.print(f"  [red]✗ Installation error: {e}[/]")
+            self.console.print("  [dim]Continuing with standard apt. This will take longer![/]")
+            self.console.print()
+            return False
+
     async def _run_updates(self) -> int:
         """Run APT and Flatpak updates concurrently."""
         apt_available = await self._apt_updater.check_available()
@@ -111,9 +216,7 @@ class SysUpdateCLI:
         downloader = Aria2Downloader()
         aria2_available = await downloader.check_available()
         if not aria2_available:
-            self.console.print("[yellow]\u26a0[/] aria2c not installed - using sequential downloads")
-            self.console.print("[dim]  Install: sudo apt install aria2[/]")
-            self.console.print()
+            aria2_available = await self._handle_aria2_warning()
 
         apt_packages: list[Package] = []
         flatpak_packages: list[Package] = []
