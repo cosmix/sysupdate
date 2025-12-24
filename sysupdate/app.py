@@ -421,16 +421,12 @@ class SysUpdateCLI:
             apt_table.add_column("", style="dim", justify="center", width=3)
             apt_table.add_column("New", style="white", justify="left")
 
-            for pkg in apt_packages[:12]:
+            for pkg in apt_packages:
                 old_ver = pkg.old_version if pkg.old_version else "-"
                 new_ver = pkg.new_version if pkg.new_version else "-"
                 apt_table.add_row(pkg.name, old_ver, "\u2192", new_ver)
 
             self.console.print(apt_table)
-
-            if len(apt_packages) > 12:
-                self.console.print(f"  [dim]... and {len(apt_packages) - 12} more[/]")
-
             self.console.print()
 
         # Flatpak Apps Table
@@ -447,15 +443,11 @@ class SysUpdateCLI:
             flatpak_table.add_column("App", style="white")
             flatpak_table.add_column("Branch", style="dim", justify="right")
 
-            for pkg in flatpak_packages[:8]:
+            for pkg in flatpak_packages:
                 branch = pkg.new_version or pkg.old_version or "stable"
                 flatpak_table.add_row(pkg.name, branch)
 
             self.console.print(flatpak_table)
-
-            if len(flatpak_packages) > 8:
-                self.console.print(f"   [dim]... and {len(flatpak_packages) - 8} more[/]")
-
             self.console.print()
 
         self.console.print("   [dim]" + "\u2500" * 40 + "[/]")

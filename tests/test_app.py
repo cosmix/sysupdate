@@ -277,8 +277,8 @@ class TestPrintSummary:
                 assert 'APT' in calls_str
                 assert 'Flatpak' in calls_str
 
-    def test_print_summary_truncates_long_lists(self):
-        """Test that summary truncates long package lists."""
+    def test_print_summary_shows_all_packages(self):
+        """Test that summary shows all packages without truncation."""
         with patch('sysupdate.app.setup_logging'):
             cli = SysUpdateCLI()
 
@@ -292,5 +292,6 @@ class TestPrintSummary:
                 cli._print_summary(apt_packages, [])
 
                 calls_str = str(mock_print.call_args_list)
-                # Should show "and X more" message
-                assert 'more' in calls_str.lower()
+                # Should NOT show "and X more" message - all packages displayed
+                assert 'more' not in calls_str.lower()
+                assert '20' in calls_str  # Count shown in header
