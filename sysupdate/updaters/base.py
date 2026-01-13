@@ -43,11 +43,6 @@ class UpdateProgress:
     eta: str = ""  # e.g., "00:42"
     message: str = ""
 
-    @property
-    def percentage(self) -> int:
-        """Return progress as integer percentage."""
-        return int(self.progress * 100)
-
 
 @dataclass
 class UpdateResult:
@@ -58,28 +53,53 @@ class UpdateResult:
     start_time: datetime = field(default_factory=datetime.now)
     end_time: datetime | None = None
 
-    @property
-    def duration(self) -> float:
-        """Return duration in seconds."""
-        if self.end_time:
-            return (self.end_time - self.start_time).total_seconds()
-        return 0.0
-
-    @property
-    def package_count(self) -> int:
-        """Return number of packages updated."""
-        return len([p for p in self.packages if p.status == "complete"])
-
 
 # Type alias for progress callback
 ProgressCallback = Callable[[UpdateProgress], None]
+
+
+def create_scaled_callback(
+    callback: ProgressCallback | None,
+    scale_start: float,
+    scale_end: float,
+    phases_to_scale: set[UpdatePhase] | None = None,
+) -> ProgressCallback:
+    """Create a callback that scales progress from [0,1] to [scale_start, scale_end].
+
+    Args:
+        callback: The original callback to wrap. If None, returns a no-op.
+        scale_start: The minimum scaled progress value.
+        scale_end: The maximum scaled progress value.
+        phases_to_scale: If provided, only scale progress for these phases.
+            Other phases pass through unchanged.
+
+    Returns:
+        A new callback that scales the progress values.
+    """
+    def scaled(update: UpdateProgress) -> None:
+        if callback is None:
+            return
+        if phases_to_scale is None or update.phase in phases_to_scale:
+            scaled_progress = scale_start + (update.progress * (scale_end - scale_start))
+            callback(UpdateProgress(
+                phase=update.phase,
+                progress=scaled_progress,
+                total_packages=update.total_packages,
+                completed_packages=update.completed_packages,
+                current_package=update.current_package,
+                message=update.message,
+                speed=update.speed,
+                eta=update.eta,
+            ))
+        else:
+            callback(update)
+    return scaled
 
 
 class UpdaterProtocol(Protocol):
     """Protocol defining the interface for package updaters."""
 
     name: str
-    icon: str
 
     async def check_available(self) -> bool:
         """Check if this updater is available on the system."""

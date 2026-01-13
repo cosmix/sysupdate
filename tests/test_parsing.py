@@ -2,10 +2,7 @@
 
 from sysupdate.utils.parsing import (
     parse_apt_output,
-    parse_apt_progress,
     parse_flatpak_output,
-    parse_flatpak_progress,
-    count_apt_upgrades,
     AptUpgradeProgressTracker,
     AptUpdateProgressTracker,
 )
@@ -60,83 +57,6 @@ class TestParseAptOutput:
             assert pkg.status == "complete"
 
 
-class TestParseAptProgress:
-    """Tests for parse_apt_progress function."""
-
-    def test_parse_progress_percentage(self):
-        """Test parsing progress percentage line."""
-        result = parse_apt_progress("Progress: [ 45%]")
-
-        assert result is not None
-        _package, progress = result
-        assert progress == 0.45
-
-    def test_parse_get_line(self):
-        """Test parsing Get: download line."""
-        result = parse_apt_progress("Get:1 http://archive.ubuntu.com libssl3")
-
-        assert result is not None
-        package, progress = result
-        assert package == "libssl3"
-        assert progress == -1.0  # Unknown progress
-
-    def test_parse_unpacking_line(self):
-        """Test parsing Unpacking line."""
-        result = parse_apt_progress("Unpacking libssl3:amd64 (3.0.13) over (3.0.11)")
-
-        assert result is not None
-        package, _progress = result
-        assert package == "libssl3"
-
-    def test_parse_setting_up_line(self):
-        """Test parsing Setting up line."""
-        result = parse_apt_progress("Setting up python3.11 (3.11.8) ...")
-
-        assert result is not None
-        package, _progress = result
-        assert package == "python3.11"
-
-    def test_parse_irrelevant_line(self):
-        """Test parsing line with no progress info."""
-        result = parse_apt_progress("Reading package lists... Done")
-        assert result is None
-
-    def test_parse_empty_line(self):
-        """Test parsing empty line."""
-        result = parse_apt_progress("")
-        assert result is None
-
-
-class TestCountAptUpgrades:
-    """Tests for count_apt_upgrades function."""
-
-    def test_count_from_summary(self):
-        """Test counting from upgrade summary line."""
-        output = "5 upgraded, 2 newly installed, 0 to remove and 0 not upgraded."
-        count = count_apt_upgrades(output)
-        assert count == 5
-
-    def test_count_from_setting_up(self):
-        """Test counting from Setting up lines when no summary."""
-        output = """
-Setting up libssl3:amd64 (3.0.13) ...
-Setting up openssl (3.0.13) ...
-Setting up python3.11 (3.11.8) ...
-"""
-        count = count_apt_upgrades(output)
-        assert count == 3
-
-    def test_count_no_updates(self, apt_no_updates_output):
-        """Test counting when all packages are up to date."""
-        count = count_apt_upgrades(apt_no_updates_output)
-        assert count == 0
-
-    def test_count_empty_output(self):
-        """Test counting with empty output."""
-        count = count_apt_upgrades("")
-        assert count == 0
-
-
 class TestParseFlatpakOutput:
     """Tests for parse_flatpak_output function."""
 
@@ -178,46 +98,6 @@ class TestParseFlatpakOutput:
 
         for pkg in packages:
             assert pkg.status == "complete"
-
-
-class TestParseFlatpakProgress:
-    """Tests for parse_flatpak_progress function."""
-
-    def test_parse_download_progress(self):
-        """Test parsing download progress line."""
-        result = parse_flatpak_progress("Downloading org.mozilla.firefox... 45%")
-
-        assert result is not None
-        app, progress = result
-        assert app == "firefox"
-        assert progress == 0.45
-
-    def test_parse_installing_line(self):
-        """Test parsing Installing line."""
-        result = parse_flatpak_progress("Installing org.gimp.GIMP")
-
-        assert result is not None
-        app, progress = result
-        assert app == "GIMP"
-        assert progress == -1.0  # Unknown progress
-
-    def test_parse_updating_line(self):
-        """Test parsing Updating line."""
-        result = parse_flatpak_progress("Updating org.libreoffice.LibreOffice")
-
-        assert result is not None
-        app, _progress = result
-        assert app == "LibreOffice"
-
-    def test_parse_irrelevant_line(self):
-        """Test parsing line with no progress info."""
-        result = parse_flatpak_progress("Looking for updates...")
-        assert result is None
-
-    def test_parse_empty_line(self):
-        """Test parsing empty line."""
-        result = parse_flatpak_progress("")
-        assert result is None
 
 
 class TestAptUpgradeProgressTracker:

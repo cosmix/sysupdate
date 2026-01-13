@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections import deque
 from datetime import datetime
 from pathlib import Path
 from typing import TextIO
@@ -76,26 +77,17 @@ class UpdateLogger:
         self.name = name
         self.log_path = get_log_path(name.lower())
         self._file: TextIO = open(self.log_path, "w")
-        self.lines: list[str] = []
-        self.max_lines = 1000  # Keep last N lines in memory
+        self.lines: deque[str] = deque(maxlen=1000)  # Keep last 1000 lines in memory
 
     def log(self, line: str) -> None:
         """Log a line of output."""
         # Write to file
         self._file.write(line + "\n")
-        self._file.flush()
 
-        # Keep in memory for display
+        # Keep in memory for display (deque automatically handles maxlen)
         self.lines.append(line)
-        if len(self.lines) > self.max_lines:
-            self.lines = self.lines[-self.max_lines:]
 
     def close(self) -> None:
         """Close the log file."""
+        self._file.flush()
         self._file.close()
-
-    def __enter__(self) -> UpdateLogger:
-        return self
-
-    def __exit__(self, *_args: object) -> None:
-        self.close()

@@ -5,10 +5,18 @@ import os
 import re
 from datetime import datetime
 
-from .base import Package, UpdateProgress, UpdateResult, UpdatePhase, ProgressCallback
+from .base import (
+    Package,
+    UpdateProgress,
+    UpdateResult,
+    UpdatePhase,
+    ProgressCallback,
+    create_scaled_callback,
+)
 from .apt_cache import is_apt_available
 from .aria2_downloader import Aria2Downloader
 from .apt_parallel import run_parallel_apt_update
+from ..utils import command_available
 from ..utils.logging import UpdateLogger
 from ..utils.parsing import parse_apt_output, AptUpgradeProgressTracker, AptUpdateProgressTracker
 
@@ -17,7 +25,6 @@ class AptUpdater:
     """Updater for APT packages."""
 
     name = "APT Packages"
-    icon = "📦"
 
     def __init__(self, use_parallel: bool = True) -> None:
         self._logger: UpdateLogger | None = None
@@ -26,16 +33,7 @@ class AptUpdater:
 
     async def check_available(self) -> bool:
         """Check if APT is available."""
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                "which", "apt",
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
-            )
-            await proc.wait()
-            return proc.returncode == 0
-        except Exception:
-            return False
+        return await command_available("which", "apt")
 
     async def check_updates(self) -> list[Package]:
         """Check for available updates without installing."""
@@ -129,17 +127,12 @@ class AptUpdater:
                 message="Updating package lists...",
             ))
 
-            # Wrapper to scale apt update progress to 0-10%
-            def checking_callback(update: UpdateProgress) -> None:
-                if update.phase == UpdatePhase.CHECKING and update.progress > 0:
-                    scaled = update.progress * checking_end
-                    report(UpdateProgress(
-                        phase=update.phase,
-                        progress=scaled,
-                        message=update.message,
-                    ))
-                else:
-                    report(update)
+            checking_callback = create_scaled_callback(
+                report,
+                scale_start=0.0,
+                scale_end=checking_end,
+                phases_to_scale={UpdatePhase.CHECKING},
+            )
 
             success = await self._run_apt_update(checking_callback)
             if not success:
@@ -166,24 +159,12 @@ class AptUpdater:
                     total_packages=len(packages),
                 ))
             else:
-                # Wrapper to scale upgrade progress:
-                # - Downloads (0-0.5) → (0.1-0.5)
-                # - Installing (0.5-1.0) → unchanged
-                def upgrade_callback(update: UpdateProgress) -> None:
-                    if update.phase == UpdatePhase.DOWNLOADING:
-                        # Scale 0-0.5 to 0.1-0.5
-                        # progress 0 → 0.1, progress 0.5 → 0.5
-                        scaled = checking_end + (update.progress * (0.5 - checking_end) / 0.5)
-                        report(UpdateProgress(
-                            phase=update.phase,
-                            progress=scaled,
-                            total_packages=update.total_packages,
-                            completed_packages=update.completed_packages,
-                            current_package=update.current_package,
-                            message=update.message,
-                        ))
-                    else:
-                        report(update)
+                upgrade_callback = create_scaled_callback(
+                    report,
+                    scale_start=checking_end,
+                    scale_end=0.5,
+                    phases_to_scale={UpdatePhase.DOWNLOADING},
+                )
 
                 packages, success, error = await self._run_apt_upgrade(upgrade_callback)
                 result.packages = packages

@@ -7,7 +7,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
-from .apt_cache import PackageInfo
+from .apt_cache import PackageInfo, APT_ARCHIVES_DIR, APT_PARTIAL_DIR
+from ..utils import command_available
 
 
 @dataclass
@@ -34,8 +35,6 @@ class Aria2Downloader:
     """Parallel package downloader using aria2c."""
 
     METALINK_NAMESPACE = "urn:ietf:params:xml:ns:metalink"
-    APT_PARTIAL_DIR = Path("/var/cache/apt/archives/partial")
-    APT_ARCHIVES_DIR = Path("/var/cache/apt/archives")
 
     def __init__(self) -> None:
         """Initialize the downloader."""
@@ -50,16 +49,7 @@ class Aria2Downloader:
         Returns:
             True if aria2c is available, False otherwise.
         """
-        try:
-            process = await asyncio.create_subprocess_exec(
-                "aria2c", "--version",
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
-            )
-            returncode = await process.wait()
-            return returncode == 0
-        except FileNotFoundError:
-            return False
+        return await command_available("aria2c", "--version")
 
     async def download_packages(
         self,
@@ -79,7 +69,7 @@ class Aria2Downloader:
             return DownloadResult(success=True)
 
         # Ensure partial directory exists
-        self.APT_PARTIAL_DIR.mkdir(parents=True, exist_ok=True)
+        APT_PARTIAL_DIR.mkdir(parents=True, exist_ok=True)
 
         # Generate Metalink XML
         metalink_xml = self._generate_metalink_xml(packages)
@@ -88,7 +78,7 @@ class Aria2Downloader:
         cmd = [
             "aria2c",
             "--metalink-file=-",  # Read from stdin
-            f"--dir={self.APT_PARTIAL_DIR}",
+            f"--dir={APT_PARTIAL_DIR}",
             "--max-concurrent-downloads=5",
             "--file-allocation=none",
             "--continue=true",
@@ -231,8 +221,8 @@ class Aria2Downloader:
         Returns:
             True if successful, False otherwise.
         """
-        partial_path = self.APT_PARTIAL_DIR / filename
-        archive_path = self.APT_ARCHIVES_DIR / filename
+        partial_path = APT_PARTIAL_DIR / filename
+        archive_path = APT_ARCHIVES_DIR / filename
 
         if not partial_path.exists():
             return False

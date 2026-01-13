@@ -4,6 +4,15 @@ import pytest
 from unittest.mock import AsyncMock
 
 
+@pytest.fixture(autouse=True)
+def clear_availability_cache():
+    """Clear the command availability cache before each test."""
+    from sysupdate.utils import _availability_cache
+    _availability_cache.clear()
+    yield
+    _availability_cache.clear()
+
+
 @pytest.fixture
 def mock_subprocess():
     """Create a mock subprocess for testing."""

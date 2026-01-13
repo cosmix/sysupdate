@@ -37,21 +37,6 @@ class TestPackage:
 class TestUpdateProgress:
     """Tests for UpdateProgress dataclass."""
 
-    def test_percentage_calculation(self):
-        """Test percentage property."""
-        progress = UpdateProgress(progress=0.75)
-        assert progress.percentage == 75
-
-    def test_percentage_zero(self):
-        """Test percentage at zero."""
-        progress = UpdateProgress(progress=0.0)
-        assert progress.percentage == 0
-
-    def test_percentage_full(self):
-        """Test percentage at 100%."""
-        progress = UpdateProgress(progress=1.0)
-        assert progress.percentage == 100
-
     def test_defaults(self):
         """Test default values."""
         progress = UpdateProgress()
@@ -65,8 +50,10 @@ class TestUpdateProgress:
 class TestUpdateResult:
     """Tests for UpdateResult dataclass."""
 
-    def test_package_count(self):
-        """Test package_count property."""
+    def test_basic_fields(self):
+        """Test basic UpdateResult fields."""
+        from datetime import datetime
+
         result = UpdateResult(
             success=True,
             packages=[
@@ -75,25 +62,10 @@ class TestUpdateResult:
                 Package(name="pkg3", status="pending"),
             ],
         )
-        assert result.package_count == 2
-
-    def test_duration(self):
-        """Test duration calculation."""
-        from datetime import datetime, timedelta
-
-        start = datetime.now()
-        end = start + timedelta(seconds=30)
-        result = UpdateResult(
-            success=True,
-            start_time=start,
-            end_time=end,
-        )
-        assert result.duration == 30.0
-
-    def test_duration_no_end(self):
-        """Test duration when not ended."""
-        result = UpdateResult(success=True)
-        assert result.duration == 0.0
+        assert result.success is True
+        assert len(result.packages) == 3
+        assert result.error_message == ""
+        assert isinstance(result.start_time, datetime)
 
 
 class TestAptUpdater:

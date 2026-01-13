@@ -5,16 +5,28 @@ import os
 import re
 from datetime import datetime
 
-from .base import Package, UpdateProgress, UpdateResult, UpdatePhase, ProgressCallback
+from .base import (
+    Package,
+    UpdateProgress,
+    UpdateResult,
+    UpdatePhase,
+    ProgressCallback,
+    create_scaled_callback,
+)
+from ..utils import command_available
 from ..utils.logging import UpdateLogger
 from ..utils.parsing import parse_flatpak_output
+
+# Skip patterns for filtering runtime/extension packages
+FLATPAK_SKIP_PATTERNS = frozenset([
+    "Locale", "Extension", "Platform", "GL.", "Sdk", "Runtime"
+])
 
 
 class FlatpakUpdater:
     """Updater for Flatpak applications."""
 
     name = "Flatpak Apps"
-    icon = "📱"
 
     def __init__(self) -> None:
         self._logger: UpdateLogger | None = None
@@ -22,23 +34,11 @@ class FlatpakUpdater:
 
     async def check_available(self) -> bool:
         """Check if Flatpak is available."""
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                "which", "flatpak",
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
-            )
-            await proc.wait()
-            return proc.returncode == 0
-        except Exception:
-            return False
+        return await command_available("which", "flatpak")
 
     async def check_updates(self) -> list[Package]:
         """Check for available Flatpak updates."""
         packages: list[Package] = []
-
-        # Skip runtimes, locales, extensions
-        skip_patterns = ["Locale", "Extension", "Platform", "GL.", "Sdk", "Runtime"]
 
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -50,7 +50,7 @@ class FlatpakUpdater:
 
             for line in stdout.decode().splitlines():
                 # Skip technical entries
-                if any(skip in line for skip in skip_patterns):
+                if any(skip in line for skip in FLATPAK_SKIP_PATTERNS):
                     continue
 
                 parts = line.split("\t")
@@ -106,21 +106,12 @@ class FlatpakUpdater:
                     total_packages=len(packages),
                 ))
             else:
-                # Wrapper to scale progress from 0-1 to 0.1-1.0
-                def scaled_callback(update: UpdateProgress) -> None:
-                    if update.phase in (UpdatePhase.DOWNLOADING, UpdatePhase.INSTALLING):
-                        # Scale 0-1 to 0.1-1.0
-                        scaled = checking_end + (update.progress * (1.0 - checking_end))
-                        report(UpdateProgress(
-                            phase=update.phase,
-                            progress=scaled,
-                            total_packages=update.total_packages,
-                            completed_packages=update.completed_packages,
-                            current_package=update.current_package,
-                            message=update.message,
-                        ))
-                    else:
-                        report(update)
+                scaled_callback = create_scaled_callback(
+                    report,
+                    scale_start=checking_end,
+                    scale_end=1.0,
+                    phases_to_scale={UpdatePhase.DOWNLOADING, UpdatePhase.INSTALLING},
+                )
 
                 packages, success, error = await self._run_flatpak_update(scaled_callback)
                 result.packages = packages
@@ -166,9 +157,6 @@ class FlatpakUpdater:
         packages: list[Package] = []
         collected_output: list[str] = []
         error_msg = ""
-
-        # Skip patterns for counting actual apps
-        skip_patterns = ["Locale", "Extension", "Platform", "GL.", "Sdk", "Runtime"]
 
         try:
             # Disable Flatpak's interactive progress bar to get cleaner output
@@ -244,7 +232,7 @@ class FlatpakUpdater:
                     numbered_match = re.match(r"^\s*(\d+)\.\s+(\S+)", line)
                     if numbered_match:
                         app_ref = numbered_match.group(2)
-                        if not any(skip in app_ref for skip in skip_patterns):
+                        if not any(skip in app_ref for skip in FLATPAK_SKIP_PATTERNS):
                             total_apps += 1
 
                     # Parse download progress - multiple patterns
@@ -290,7 +278,7 @@ class FlatpakUpdater:
                     )
                     if action_match:
                         app_ref = action_match.group(1)
-                        if not any(skip in app_ref for skip in skip_patterns):
+                        if not any(skip in app_ref for skip in FLATPAK_SKIP_PATTERNS):
                             current_app = app_ref.split(".")[-1]
                             progress = (completed + 0.5) / max(total_apps, 1)
                             report(UpdateProgress(
@@ -303,7 +291,7 @@ class FlatpakUpdater:
 
                     # Count completions
                     if any(marker in line.lower() for marker in ["done", "installed", "updated"]):
-                        if not any(skip in line for skip in skip_patterns):
+                        if not any(skip in line for skip in FLATPAK_SKIP_PATTERNS):
                             completed += 1
                             report(UpdateProgress(
                                 phase=UpdatePhase.INSTALLING,

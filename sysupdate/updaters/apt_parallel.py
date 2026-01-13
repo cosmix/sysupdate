@@ -3,7 +3,14 @@
 import asyncio
 from datetime import datetime
 
-from .base import Package, UpdateProgress, UpdateResult, UpdatePhase, ProgressCallback
+from .base import (
+    Package,
+    UpdateProgress,
+    UpdateResult,
+    UpdatePhase,
+    ProgressCallback,
+    create_scaled_callback,
+)
 from .apt_cache import AptCacheWrapper
 from .aria2_downloader import Aria2Downloader
 from ..utils.logging import UpdateLogger
@@ -53,17 +60,12 @@ async def run_parallel_apt_update(
             message="Updating package lists...",
         ))
 
-        # Wrapper to scale apt update progress to 0-10%
-        def checking_progress_callback(update: UpdateProgress) -> None:
-            if update.phase == UpdatePhase.CHECKING and update.progress > 0:
-                scaled = update.progress * checking_end
-                report(UpdateProgress(
-                    phase=update.phase,
-                    progress=scaled,
-                    message=update.message,
-                ))
-            else:
-                report(update)
+        checking_progress_callback = create_scaled_callback(
+            report,
+            scale_start=0.0,
+            scale_end=checking_end,
+            phases_to_scale={UpdatePhase.CHECKING},
+        )
 
         success = await run_apt_update(checking_progress_callback)
         if not success:
@@ -170,23 +172,12 @@ async def run_parallel_apt_update(
             completed_packages=0,
         ))
 
-        # Create a wrapper callback that scales install progress from 0-1 to 50%-100%
-        install_range = 1.0 - install_start  # 0.5
-
-        def install_progress_callback(update: UpdateProgress) -> None:
-            if update.phase == UpdatePhase.INSTALLING:
-                # Scale: internal 0-1 becomes 0.5-1.0
-                scaled_progress = install_start + (update.progress * install_range)
-                report(UpdateProgress(
-                    phase=update.phase,
-                    progress=scaled_progress,
-                    total_packages=update.total_packages,
-                    completed_packages=update.completed_packages,
-                    current_package=update.current_package,
-                    message=update.message,
-                ))
-            else:
-                report(update)
+        install_progress_callback = create_scaled_callback(
+            report,
+            scale_start=install_start,
+            scale_end=1.0,
+            phases_to_scale={UpdatePhase.INSTALLING},
+        )
 
         install_success, install_error = await run_apt_install_from_cache(
             install_progress_callback, total_packages

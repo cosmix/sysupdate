@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-import subprocess
 from typing import Any
+
+# Shared path constants for APT cache directories
+APT_ARCHIVES_DIR = Path("/var/cache/apt/archives")
+APT_PARTIAL_DIR = APT_ARCHIVES_DIR / "partial"
 
 # python3-apt is a system package, imported conditionally
 # Type checkers can't find type stubs for these system packages
@@ -45,8 +48,9 @@ class PackageInfo:
 class AptCacheWrapper:
     """Wrapper around python3-apt for package metadata extraction."""
 
-    APT_ARCHIVES_DIR = Path("/var/cache/apt/archives")
-    APT_PARTIAL_DIR = APT_ARCHIVES_DIR / "partial"
+    # Reference module-level constants for backwards compatibility
+    APT_ARCHIVES_DIR = APT_ARCHIVES_DIR
+    APT_PARTIAL_DIR = APT_PARTIAL_DIR
 
     def __init__(self) -> None:
         if not APT_AVAILABLE:
@@ -58,13 +62,6 @@ class AptCacheWrapper:
         if self._cache is None:
             self._cache = apt.Cache()  # type: ignore[union-attr]
         return self._cache
-
-    def refresh_cache(self) -> None:
-        """Refresh the APT cache (equivalent to apt update)."""
-        self._cache = None
-        cache = self._get_cache()
-        cache.update()
-        cache.open(None)
 
     def get_upgradable_packages(self) -> list[PackageInfo]:
         """Get list of upgradable packages with download information.
@@ -133,71 +130,6 @@ class AptCacheWrapper:
             )
 
         return packages
-
-    def get_already_downloaded(self, packages: list[PackageInfo]) -> set[str]:
-        """Check which packages are already downloaded in the cache.
-
-        Args:
-            packages: List of packages to check.
-
-        Returns:
-            Set of package names that are already downloaded.
-        """
-        downloaded: set[str] = set()
-        for pkg in packages:
-            archive_path = self.APT_ARCHIVES_DIR / pkg.destfile
-            if archive_path.exists() and archive_path.stat().st_size == pkg.size:
-                downloaded.add(pkg.name)
-        return downloaded
-
-    def install_downloaded_packages(self) -> tuple[bool, str]:
-        """Install packages that have been downloaded to the cache.
-
-        This runs dpkg to install all .deb files in the archives directory.
-
-        Returns:
-            Tuple of (success, error_message).
-        """
-        try:
-            # Use apt-get to install from cache
-            result = subprocess.run(
-                ["sudo", "apt-get", "-y", "--no-download", "dist-upgrade"],
-                capture_output=True,
-                text=True,
-                timeout=600,
-            )
-            if result.returncode != 0:
-                return False, result.stderr or "Installation failed"
-            return True, ""
-        except subprocess.TimeoutExpired:
-            return False, "Installation timed out"
-        except Exception as e:
-            return False, str(e)
-
-    def move_from_partial(self, filename: str) -> bool:
-        """Move a downloaded file from partial to archives directory.
-
-        Args:
-            filename: Name of the file to move.
-
-        Returns:
-            True if successful, False otherwise.
-        """
-        partial_path = self.APT_PARTIAL_DIR / filename
-        archive_path = self.APT_ARCHIVES_DIR / filename
-
-        if not partial_path.exists():
-            return False
-
-        try:
-            partial_path.rename(archive_path)
-            return True
-        except Exception:
-            return False
-
-    def clear_cache(self) -> None:
-        """Clear the internal cache to force refresh."""
-        self._cache = None
 
 
 def is_apt_available() -> bool:

@@ -1,7 +1,8 @@
 """Minimal CLI interface for System Update Manager using Rich."""
 
 import asyncio
-from typing import cast
+import re
+from typing import Callable, cast
 from rich.console import Console
 from rich.progress import (
     Progress,
@@ -21,6 +22,9 @@ from .updaters.apt import AptUpdater
 from .updaters.flatpak import FlatpakUpdater
 from .updaters.aria2_downloader import Aria2Downloader
 from .utils.logging import setup_logging
+
+# Precompiled pattern for stripping Rich markup tags
+_MARKUP_PATTERN = re.compile(r"\[(green|red|dim|/)\]")
 
 
 class StatusColumn(SpinnerColumn):
@@ -84,7 +88,7 @@ class SysUpdateCLI:
             text = f"{prefix}{label}"
 
         # Calculate visible length (strip Rich markup)
-        visible = text.replace("[green]", "").replace("[red]", "").replace("[dim]", "").replace("[/]", "")
+        visible = _MARKUP_PATTERN.sub("", text)
         visible_len = len(visible)
 
         if visible_len < self.DESC_WIDTH:
@@ -96,12 +100,43 @@ class SysUpdateCLI:
             # Remove markup, truncate, but keep the structure
             if detail:
                 # Truncate detail portion
-                detail_visible = detail.replace("[dim]", "").replace("[/]", "")
+                detail_visible = _MARKUP_PATTERN.sub("", detail)
                 if len(detail_visible) > excess:
                     new_detail = detail_visible[:-excess-1] + "…"
                     return f"{prefix}{label} [dim]{new_detail}[/]"
             return text[:self.DESC_WIDTH]
         return text
+
+    def _create_progress_callback(
+        self,
+        progress: Progress,
+        task_id,
+        label: str,
+        max_pkg_len: int = 12,
+    ) -> Callable[[UpdateProgress], None]:
+        """Create a progress callback for an updater.
+
+        Args:
+            progress: Rich Progress instance to update
+            task_id: Task ID returned by progress.add_task()
+            label: Label for the updater (e.g., "APT", "Flatpak")
+            max_pkg_len: Maximum length for package name display
+        """
+        def on_progress(update: UpdateProgress) -> None:
+            pct = int(update.progress * 100)
+            if update.phase == UpdatePhase.CHECKING:
+                desc = self._format_desc("", label, "[dim]checking...[/]")
+            elif update.phase in (UpdatePhase.DOWNLOADING, UpdatePhase.INSTALLING):
+                phase_text = "downloading" if update.phase == UpdatePhase.DOWNLOADING else "installing"
+                if update.current_package:
+                    pkg = update.current_package[:max_pkg_len]
+                    desc = self._format_desc("", f"{label} [dim]|[/] {pkg}")
+                else:
+                    desc = self._format_desc("", label, f"[dim]{phase_text}...[/]")
+            else:
+                desc = self._format_desc("", label)
+            progress.update(task_id, completed=pct, description=desc)
+        return on_progress
 
     async def _handle_aria2_warning(self) -> bool:
         """Display prominent aria2 warning and offer to install it.
@@ -278,32 +313,9 @@ class SysUpdateCLI:
 
     async def _run_apt(self, progress: Progress, task_id) -> list[Package]:
         """Run APT update with progress."""
-
-        def on_progress(update: UpdateProgress) -> None:
-            pct = int(update.progress * 100)
-
-            if update.phase == UpdatePhase.CHECKING:
-                desc = self._format_desc("", "APT", "[dim]checking...[/]")
-            elif update.phase == UpdatePhase.DOWNLOADING:
-                if update.current_package:
-                    pkg = update.current_package[:12]
-                    desc = self._format_desc("", f"APT [dim]|[/] {pkg}")
-                else:
-                    desc = self._format_desc("", "APT", "[dim]downloading...[/]")
-            elif update.phase == UpdatePhase.INSTALLING:
-                if update.current_package:
-                    pkg = update.current_package[:12]
-                    desc = self._format_desc("", f"APT [dim]|[/] {pkg}")
-                else:
-                    desc = self._format_desc("", "APT", "[dim]installing...[/]")
-            elif update.phase == UpdatePhase.COMPLETE:
-                desc = self._format_desc("", "APT")
-            elif update.phase == UpdatePhase.ERROR:
-                desc = self._format_desc("", "APT")
-            else:
-                desc = self._format_desc("", "APT")
-
-            progress.update(task_id, completed=pct, description=desc)
+        on_progress = self._create_progress_callback(
+            progress, task_id, label="APT", max_pkg_len=12
+        )
 
         result = await self._apt_updater.run_update(
             callback=on_progress,
@@ -329,32 +341,9 @@ class SysUpdateCLI:
 
     async def _run_flatpak(self, progress: Progress, task_id) -> list[Package]:
         """Run Flatpak update with progress."""
-
-        def on_progress(update: UpdateProgress) -> None:
-            pct = int(update.progress * 100)
-
-            if update.phase == UpdatePhase.CHECKING:
-                desc = self._format_desc("", "Flatpak", "[dim]checking...[/]")
-            elif update.phase == UpdatePhase.DOWNLOADING:
-                if update.current_package:
-                    pkg = update.current_package[:10]
-                    desc = self._format_desc("", f"Flatpak [dim]|[/] {pkg}")
-                else:
-                    desc = self._format_desc("", "Flatpak", "[dim]downloading...[/]")
-            elif update.phase == UpdatePhase.INSTALLING:
-                if update.current_package:
-                    pkg = update.current_package[:10]
-                    desc = self._format_desc("", f"Flatpak [dim]|[/] {pkg}")
-                else:
-                    desc = self._format_desc("", "Flatpak", "[dim]installing...[/]")
-            elif update.phase == UpdatePhase.COMPLETE:
-                desc = self._format_desc("", "Flatpak")
-            elif update.phase == UpdatePhase.ERROR:
-                desc = self._format_desc("", "Flatpak")
-            else:
-                desc = self._format_desc("", "Flatpak")
-
-            progress.update(task_id, completed=pct, description=desc)
+        on_progress = self._create_progress_callback(
+            progress, task_id, label="Flatpak", max_pkg_len=10
+        )
 
         result = await self._flatpak_updater.run_update(
             callback=on_progress,

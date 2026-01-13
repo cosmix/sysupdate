@@ -8,6 +8,21 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ..updaters.base import Package
 
+# Import at runtime to avoid circular import - use lazy import in function
+# FLATPAK_SKIP_PATTERNS will be imported from flatpak module when needed
+
+
+# Precompiled regex patterns for performance
+_UNPACK_PATTERN = re.compile(r"Unpacking\s+(\S+)\s+\(([^)]+)\)\s+over\s+\(([^)]+)\)")
+_SETUP_PATTERN = re.compile(r"Setting up\s+(\S+)\s+\(([^)]+)\)")
+_NUMBERED_PATTERN = re.compile(r"^\s*\d+\.\s+(\S+)\s+(\S+)(?:\s+(\S+))?")
+_ACTION_PATTERN = re.compile(r"(?:Installing|Updating)\s+(\S+)")
+_COUNT_PATTERN = re.compile(r"(\d+)\s+upgraded")
+_GET_PATTERN = re.compile(r"Get:(\d+)\s+\S+\s+(\S+)\s+")
+_UNPACK_SIMPLE_PATTERN = re.compile(r"Unpacking\s+(\S+)")
+_SETUP_SIMPLE_PATTERN = re.compile(r"Setting up\s+(\S+)")
+_TRIGGER_PATTERN = re.compile(r"Processing triggers for\s+(\S+)")
+
 
 def parse_apt_output(output: str) -> list[Package]:
     """
@@ -28,19 +43,9 @@ def parse_apt_output(output: str) -> list[Package]:
 
     packages: dict[str, Package] = {}
 
-    # Pattern for "Unpacking package (new_version) over (old_version)"
-    unpack_pattern = re.compile(
-        r"Unpacking\s+(\S+)\s+\(([^)]+)\)\s+over\s+\(([^)]+)\)"
-    )
-
-    # Pattern for "Setting up package (version)"
-    setup_pattern = re.compile(
-        r"Setting up\s+(\S+)\s+\(([^)]+)\)"
-    )
-
     for line in output.splitlines():
         # Check for unpack line (has old and new version)
-        match = unpack_pattern.search(line)
+        match = _UNPACK_PATTERN.search(line)
         if match:
             name, new_ver, old_ver = match.groups()
             # Remove architecture suffix like :amd64
@@ -54,7 +59,7 @@ def parse_apt_output(output: str) -> list[Package]:
             continue
 
         # Check for setup line (only has new version)
-        match = setup_pattern.search(line)
+        match = _SETUP_PATTERN.search(line)
         if match:
             name, version = match.groups()
             name = name.split(":")[0]
@@ -66,43 +71,6 @@ def parse_apt_output(output: str) -> list[Package]:
                 )
 
     return list(packages.values())
-
-
-def parse_apt_progress(line: str) -> tuple[str, float] | None:
-    """
-    Parse APT progress from a line of output.
-
-    APT can output progress like:
-    - "Progress: [ 45%]"
-    - "Get:1 http://... package 123 kB"
-
-    Args:
-        line: Single line of APT output
-
-    Returns:
-        Tuple of (current_package, progress) or None
-    """
-    # Progress percentage pattern
-    progress_match = re.search(r"Progress:\s*\[\s*(\d+)%\]", line)
-    if progress_match:
-        return ("", int(progress_match.group(1)) / 100.0)
-
-    # Download line pattern
-    get_match = re.search(r"Get:\d+\s+\S+\s+(\S+)", line)
-    if get_match:
-        return (get_match.group(1), -1.0)  # -1 means unknown progress
-
-    # Unpacking line
-    unpack_match = re.search(r"Unpacking\s+(\S+)", line)
-    if unpack_match:
-        return (unpack_match.group(1).split(":")[0], -1.0)
-
-    # Setting up line
-    setup_match = re.search(r"Setting up\s+(\S+)", line)
-    if setup_match:
-        return (setup_match.group(1).split(":")[0], -1.0)
-
-    return None
 
 
 def parse_flatpak_output(output: str) -> list[Package]:
@@ -121,29 +89,17 @@ def parse_flatpak_output(output: str) -> list[Package]:
     """
     # Import here to avoid circular dependency
     from ..updaters.base import Package
+    from ..updaters.flatpak import FLATPAK_SKIP_PATTERNS
 
     packages: dict[str, Package] = {}
 
-    # Skip runtimes, locales, extensions
-    skip_patterns = ["Locale", "Extension", "Platform", "GL.", "Sdk"]
-
-    # Pattern for numbered list format
-    numbered_pattern = re.compile(
-        r"^\s*\d+\.\s+(\S+)\s+(\S+)(?:\s+(\S+))?"
-    )
-
-    # Pattern for update/install lines
-    action_pattern = re.compile(
-        r"(?:Updating|Installing)\s+(\S+)"
-    )
-
     for line in output.splitlines():
         # Skip runtime/extension lines
-        if any(skip in line for skip in skip_patterns):
+        if any(skip in line for skip in FLATPAK_SKIP_PATTERNS):
             continue
 
         # Check numbered list format
-        match = numbered_pattern.match(line)
+        match = _NUMBERED_PATTERN.match(line)
         if match:
             name, branch = match.group(1), match.group(2)
             size = match.group(3) or ""
@@ -160,7 +116,7 @@ def parse_flatpak_output(output: str) -> list[Package]:
             continue
 
         # Check action line format
-        match = action_pattern.search(line)
+        match = _ACTION_PATTERN.search(line)
         if match:
             name = match.group(1)
             display_name = name.split(".")[-1] if "." in name else name
@@ -171,66 +127,6 @@ def parse_flatpak_output(output: str) -> list[Package]:
                 )
 
     return list(packages.values())
-
-
-def parse_flatpak_progress(line: str) -> tuple[str, float] | None:
-    """
-    Parse Flatpak progress from a line of output.
-
-    Args:
-        line: Single line of Flatpak output
-
-    Returns:
-        Tuple of (current_app, progress) or None
-    """
-    # Downloading pattern with percentage
-    download_match = re.search(
-        r"Downloading\s+([\w.]+).*?(\d+)%",
-        line
-    )
-    if download_match:
-        name = download_match.group(1).rstrip(".")
-        name = name.split(".")[-1] if "." in name else name
-        progress = int(download_match.group(2)) / 100.0
-        return (name, progress)
-
-    # Installing/Updating action
-    action_match = re.search(
-        r"(?:Installing|Updating)\s+(\S+)",
-        line
-    )
-    if action_match:
-        name = action_match.group(1).split(".")[-1]
-        return (name, -1.0)
-
-    return None
-
-
-def count_apt_upgrades(output: str) -> int:
-    """
-    Count the number of packages to be upgraded from APT output.
-
-    Args:
-        output: APT update/upgrade output
-
-    Returns:
-        Number of packages to upgrade
-    """
-    # Pattern: "X upgraded, Y newly installed"
-    match = re.search(r"(\d+)\s+upgraded", output)
-    if match:
-        return int(match.group(1))
-
-    # Alternative: count "Setting up" lines
-    setting_up = len(re.findall(r"Setting up\s+\S+", output))
-    if setting_up > 0:
-        return setting_up
-
-    # Check for "All packages are up to date"
-    if "up to date" in output.lower():
-        return 0
-
-    return 0
 
 
 class AptUpgradeProgressTracker:
@@ -272,7 +168,7 @@ class AptUpgradeProgressTracker:
             completed_packages, message. Returns None if no progress update.
         """
         # Check for total package count from summary line
-        count_match = re.search(r"(\d+)\s+upgraded", line)
+        count_match = _COUNT_PATTERN.search(line)
         if count_match:
             new_total = int(count_match.group(1))
             if new_total > 0:
@@ -301,7 +197,7 @@ class AptUpgradeProgressTracker:
             }
 
         # Track download progress via Get: lines
-        get_match = re.match(r"Get:(\d+)\s+\S+\s+(\S+)\s+", line)
+        get_match = _GET_PATTERN.match(line)
         if get_match:
             pkg_num = int(get_match.group(1))
             self.download_count = pkg_num
@@ -336,7 +232,7 @@ class AptUpgradeProgressTracker:
                     }
 
         # Track unpacking progress
-        unpack_match = re.search(r"Unpacking\s+(\S+)", line)
+        unpack_match = _UNPACK_SIMPLE_PATTERN.search(line)
         if unpack_match:
             self.current_package = unpack_match.group(1).split(":")[0]
             self.unpack_count += 1
@@ -365,7 +261,7 @@ class AptUpgradeProgressTracker:
                     }
 
         # Track installation progress via Setting up lines
-        setup_match = re.search(r"Setting up\s+(\S+)", line)
+        setup_match = _SETUP_SIMPLE_PATTERN.search(line)
         if setup_match:
             self.install_count += 1
             self.current_package = setup_match.group(1).split(":")[0]
@@ -402,7 +298,7 @@ class AptUpgradeProgressTracker:
                     }
 
         # Track processing triggers
-        trigger_match = re.search(r"Processing triggers for\s+(\S+)", line)
+        trigger_match = _TRIGGER_PATTERN.search(line)
         if trigger_match:
             self.current_package = trigger_match.group(1).split(":")[0]
             progress = 0.95 + (self.install_count / max(self.total_packages, 1)) * 0.05
@@ -468,49 +364,3 @@ class AptUpdateProgressTracker:
                 self.last_progress = progress
                 return progress
         return None
-
-
-def parse_aria2_progress(line: str) -> tuple[str, float, str, str] | None:
-    """
-    Parse aria2c progress from output line.
-
-    aria2c outputs lines like:
-    - "[#abc123 50% CN:5 DL:2.5MiB/s ETA:30s]"
-    - "[#def456 100%]"
-    - "Download complete: /path/to/file.deb"
-
-    Args:
-        line: Single line of aria2c output
-
-    Returns:
-        Tuple of (gid, progress, speed, eta) or None if not a progress line.
-        gid is the download ID (e.g., "abc123")
-        progress is 0.0-1.0
-        speed is string like "2.5MiB/s" or ""
-        eta is string like "30s" or ""
-    """
-    # Progress line pattern: [#abc123 50% CN:5 DL:2.5MiB/s ETA:30s]
-    progress_pattern = re.compile(
-        r"\[#([a-f0-9]+)\s+(\d+)%(?:.*?DL:(\S+))?(?:.*?ETA:(\S+))?\]"
-    )
-
-    match = progress_pattern.search(line)
-    if match:
-        gid = match.group(1)
-        progress = int(match.group(2)) / 100.0
-        speed = match.group(3) or ""
-        eta = match.group(4) or ""
-        return (gid, progress, speed, eta)
-
-    # Complete line pattern: Download complete: /path/to/file.deb
-    complete_pattern = re.compile(r"Download complete:\s*(\S+)")
-
-    match = complete_pattern.search(line)
-    if match:
-        filepath = match.group(1)
-        # Extract GID from filepath if it contains it, otherwise use the path
-        # For completed downloads, return 100% progress
-        gid = filepath.split("/")[-1]  # Use filename as identifier
-        return (gid, 1.0, "", "")
-
-    return None
