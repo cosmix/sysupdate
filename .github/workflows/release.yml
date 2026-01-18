@@ -1,14 +1,17 @@
 name: Release PyApp Binaries
 
 on:
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (e.g., 1.0.0)'
-        required: true
+        description: 'Release version (e.g., 1.0.0) - only for manual runs'
+        required: false
         type: string
       prerelease:
-        description: 'Mark as pre-release'
+        description: 'Mark as pre-release (auto-detected from version if not set)'
         required: false
         type: boolean
         default: false
@@ -32,9 +35,36 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       wheel_name: ${{ steps.build.outputs.wheel_name }}
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            # Extract version from tag (strip 'v' prefix)
+            VERSION="${GITHUB_REF_NAME#v}"
+          elif [[ -n "${{ inputs.version }}" ]]; then
+            # Use manual input
+            VERSION="${{ inputs.version }}"
+          else
+            echo "::error::No version provided. For manual runs, specify a version."
+            exit 1
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: ${VERSION}"
+
+          # Auto-detect prerelease (contains -, e.g., 1.0.0-rc1, 1.0.0-alpha)
+          if [[ "${{ inputs.prerelease }}" == "true" ]] || [[ "${VERSION}" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "Prerelease: true"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "Prerelease: false"
+          fi
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v4
@@ -76,7 +106,7 @@ jobs:
 
       - name: Build binary
         env:
-          PYAPP_PROJECT_VERSION: ${{ inputs.version }}
+          PYAPP_PROJECT_VERSION: ${{ needs.build-wheel.outputs.version }}
           PYAPP_PROJECT_PATH: ${{ github.workspace }}/wheel/${{ needs.build-wheel.outputs.wheel_name }}
           PYAPP_DISTRIBUTION_EMBED: ${{ inputs.embed_python && '1' || '0' }}
         run: |
@@ -120,7 +150,7 @@ jobs:
 
       - name: Build binary
         env:
-          PYAPP_PROJECT_VERSION: ${{ inputs.version }}
+          PYAPP_PROJECT_VERSION: ${{ needs.build-wheel.outputs.version }}
           PYAPP_PROJECT_PATH: ${{ github.workspace }}/wheel/${{ needs.build-wheel.outputs.wheel_name }}
           PYAPP_DISTRIBUTION_EMBED: ${{ inputs.embed_python && '1' || '0' }}
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
@@ -165,9 +195,9 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ inputs.version }}
-          name: sysupdate v${{ inputs.version }}
-          prerelease: ${{ inputs.prerelease }}
+          tag_name: v${{ needs.build-wheel.outputs.version }}
+          name: sysupdate v${{ needs.build-wheel.outputs.version }}
+          prerelease: ${{ needs.build-wheel.outputs.prerelease == 'true' }}
           generate_release_notes: true
           files: |
             release/sysupdate-linux-x86_64
