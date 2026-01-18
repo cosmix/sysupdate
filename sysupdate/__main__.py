@@ -4,6 +4,8 @@ import argparse
 import subprocess
 import sys
 
+from . import __version__
+
 
 def check_sudo() -> bool:
     """Prompt for sudo password before starting."""
@@ -35,7 +37,7 @@ def main() -> int:
     parser.add_argument(
         "--version",
         action="version",
-        version="%(prog)s 2.0.0",
+        version=f"%(prog)s {__version__}",
     )
     parser.add_argument(
         "--dry-run",

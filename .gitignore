@@ -5,6 +5,9 @@ __pycache__/
 *.pyc
 *.pyo
 
+# Generated version file (hatch-vcs)
+sysupdate/_version.py
+
 # PyApp build artifacts
 .pyapp-src/
 sysupdate-local
