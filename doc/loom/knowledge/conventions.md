@@ -5,12 +5,21 @@
 
 ## Version Management
 
-Version is defined in THREE locations (must be kept in sync):
-1. `pyproject.toml:3` - `version = "2.0.0"` (source of truth for packaging)
-2. `sysupdate/__init__.py:3` - `__version__ = "2.0.0"` (runtime import)
-3. `sysupdate/__main__.py:38` - hardcoded in argparse `version` action
+Version is automatically derived from git tags using `hatch-vcs`:
 
-**Note**: For CI/CD release automation, consider using a single source of truth.
+- **Source of truth**: Git tags (e.g., `v2.1.0`)
+- **Build config**: `pyproject.toml` - `dynamic = ["version"]` with `hatch-vcs` plugin
+- **Generated file**: `sysupdate/_version.py` (created at build time, gitignored)
+- **Runtime access**: `sysupdate/__init__.py` imports from `_version.py`
+
+**Version formats**:
+| Scenario | Example |
+|----------|---------|
+| Tagged commit | `2.1.0` |
+| After tag (N commits) | `2.1.1.devN+g<hash>` |
+| Dirty working tree | `2.1.1.devN+g<hash>.d<date>` |
+
+**Release workflow**: Push a tag like `v2.1.0` → GitHub Actions builds with that version.
 
 ## Directory Structure
 
