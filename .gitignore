@@ -4,3 +4,6 @@ restore_packages.sh
 __pycache__/
 *.pyc
 *.pyo
+
+# PyApp build artifacts
+.pyapp-src/
