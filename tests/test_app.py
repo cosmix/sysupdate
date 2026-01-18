@@ -41,8 +41,13 @@ class TestSysUpdateCLI:
 
     def test_run_handles_keyboard_interrupt(self):
         """Test that run handles KeyboardInterrupt gracefully."""
+        def mock_asyncio_run(coro):
+            """Mock asyncio.run that properly closes the coroutine before raising."""
+            coro.close()
+            raise KeyboardInterrupt
+
         with patch('sysupdate.app.setup_logging'), \
-             patch('sysupdate.app.asyncio.run', side_effect=KeyboardInterrupt):
+             patch('sysupdate.app.asyncio.run', side_effect=mock_asyncio_run):
             cli = SysUpdateCLI()
             result = cli.run()
 
