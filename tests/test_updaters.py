@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from sysupdate.updaters.base import Package, UpdateProgress, UpdateResult, UpdatePhase
 from sysupdate.updaters.apt import AptUpdater
 from sysupdate.updaters.flatpak import FlatpakUpdater
+from sysupdate.updaters.snap import SnapUpdater
 
 
 class TestPackage:
@@ -257,3 +258,117 @@ org.gnome.Platform.Locale\t45\t
 
             assert result.success is True
             assert any(p.phase == UpdatePhase.COMPLETE for p in progress_updates)
+
+
+class TestSnapUpdater:
+    """Tests for SnapUpdater."""
+
+    @pytest.fixture
+    def updater(self):
+        """Create a SnapUpdater instance."""
+        return SnapUpdater()
+
+    @pytest.mark.asyncio
+    async def test_check_available_true(self, updater):
+        """Test check_available when snap exists."""
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
+            mock_proc = AsyncMock()
+            mock_proc.returncode = 0
+            mock_proc.wait = AsyncMock()
+            mock_exec.return_value = mock_proc
+
+            result = await updater.check_available()
+            assert result is True
+
+    @pytest.mark.asyncio
+    async def test_check_available_false(self, updater):
+        """Test check_available when snap doesn't exist."""
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
+            mock_proc = AsyncMock()
+            mock_proc.returncode = 1
+            mock_proc.wait = AsyncMock()
+            mock_exec.return_value = mock_proc
+
+            result = await updater.check_available()
+            assert result is False
+
+    @pytest.mark.asyncio
+    async def test_check_updates(self, updater):
+        """Test check_updates parses snap refresh --list output."""
+        snap_list_output = b"""Name                  Version    Rev    Size    Publisher        Notes
+firefox               125.0.1    4432   279MB   mozilla          -
+vlc                   3.0.20     3650   485MB   videolan         -
+spotify               1.2.31     71     181MB   spotify          -
+"""
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
+            mock_proc = AsyncMock()
+            mock_proc.returncode = 0
+            mock_proc.communicate = AsyncMock(return_value=(snap_list_output, b""))
+            mock_exec.return_value = mock_proc
+
+            packages = await updater.check_updates()
+
+            assert len(packages) == 3
+            assert any(p.name == "firefox" for p in packages)
+            assert any(p.name == "vlc" for p in packages)
+            assert any(p.name == "spotify" for p in packages)
+
+    @pytest.mark.asyncio
+    async def test_check_updates_filters_system_snaps(self, updater):
+        """Test that system snaps are filtered out."""
+        snap_list_output = b"""Name                  Version    Rev    Size    Publisher        Notes
+firefox               125.0.1    4432   279MB   mozilla          -
+snapd                 2.61.3     21184  32MB    canonical        snapd
+core22                20240111   1122   64MB    canonical        base
+gnome-42-2204         0+git.510  176    190MB   canonical        -
+gtk-common-themes     0.1-81     1535   64MB    canonical        -
+"""
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
+            mock_proc = AsyncMock()
+            mock_proc.returncode = 0
+            mock_proc.communicate = AsyncMock(return_value=(snap_list_output, b""))
+            mock_exec.return_value = mock_proc
+
+            packages = await updater.check_updates()
+
+            # Only firefox should remain, system snaps are filtered
+            assert len(packages) == 1
+            assert packages[0].name == "firefox"
+
+    @pytest.mark.asyncio
+    async def test_dry_run_mode(self, updater):
+        """Test dry run doesn't actually update."""
+        snap_list_output = b"""Name      Version    Rev    Size    Publisher   Notes
+firefox   125.0.1    4432   279MB   mozilla     -
+"""
+
+        progress_updates = []
+
+        def track_progress(progress: UpdateProgress):
+            progress_updates.append(progress)
+
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
+            mock_proc = AsyncMock()
+            mock_proc.returncode = 0
+            mock_proc.communicate = AsyncMock(return_value=(snap_list_output, b""))
+            mock_exec.return_value = mock_proc
+
+            with patch.object(updater, "_logger", MagicMock()):
+                result = await updater.run_update(callback=track_progress, dry_run=True)
+
+            assert result.success is True
+            assert any(p.phase == UpdatePhase.COMPLETE for p in progress_updates)
+
+    @pytest.mark.asyncio
+    async def test_no_updates_available(self, updater):
+        """Test handling when no updates are available."""
+        snap_list_output = b"All snaps up to date.\n"
+
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
+            mock_proc = AsyncMock()
+            mock_proc.returncode = 0
+            mock_proc.communicate = AsyncMock(return_value=(snap_list_output, b""))
+            mock_exec.return_value = mock_proc
+
+            packages = await updater.check_updates()
+            assert len(packages) == 0

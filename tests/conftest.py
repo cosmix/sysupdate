@@ -118,3 +118,43 @@ def flatpak_no_updates_output():
 Looking for updates...
 Nothing to do.
 """
+
+
+@pytest.fixture
+def snap_refresh_list_output():
+    """Sample snap refresh --list output showing available updates."""
+    return """Name                  Version    Rev    Size    Publisher        Notes
+firefox               125.0.1    4432   279MB   mozilla✓         -
+vlc                   3.0.20     3650   485MB   videolan✓        -
+spotify               1.2.31     71     181MB   spotify✓         -
+"""
+
+
+@pytest.fixture
+def snap_list_output():
+    """Sample snap list output showing installed versions."""
+    return """Name                  Version    Rev    Tracking         Publisher   Notes
+core22                20240111   1122   latest/stable    canonical✓  base
+firefox               124.0.2    4336   latest/stable    mozilla✓    -
+gnome-42-2204         0+git.510  176    latest/stable    canonical✓  -
+gtk-common-themes     0.1-81-g442e511  1535   latest/stable    canonical✓  -
+snapd                 2.61.3     21184  latest/stable    canonical✓  snapd
+spotify               1.2.28     69     latest/stable    spotify✓    -
+vlc                   3.0.18     3499   latest/stable    videolan✓   -
+"""
+
+
+@pytest.fixture
+def snap_refresh_output():
+    """Sample snap refresh output during actual update."""
+    return """firefox (stable) 125.0.1 from Mozilla✓ refreshed
+vlc (stable) 3.0.20 from VideoLAN✓ refreshed
+spotify (stable) 1.2.31 from Spotify✓ refreshed
+"""
+
+
+@pytest.fixture
+def snap_no_updates_output():
+    """Sample snap refresh --list output when no updates available."""
+    return """All snaps up to date.
+"""
