@@ -38,3 +38,25 @@
 - Async subprocess execution via `asyncio.create_subprocess_exec()`
 - Stdout/stderr captured and parsed for progress info
 - Proper cleanup and signal handling for keyboard interrupts
+
+## UpdaterProtocol Methods
+
+Required methods for new updaters:
+- name: str class attribute for display
+- check_available() -> bool: use command_available('which', 'snap')
+- check_updates() -> list[Package]: list pending updates
+- run_update(callback, dry_run) -> UpdateResult: execute update
+
+## Progress Callback Pattern
+
+- Create UpdateProgress with phase and progress (0.0-1.0)
+- Phases: IDLE → CHECKING → DOWNLOADING → INSTALLING → COMPLETE/ERROR
+- Use create_scaled_callback() for sub-ranges (e.g., checking=0-10%, rest=10-100%)
+- Report via callback(UpdateProgress(...))
+
+## Subprocess Output Handling
+
+- Read stdout char-by-char for real-time progress (see flatpak.py:184-212)
+- Collect lines in list for final parsing
+- Use UpdateLogger('name') to log all output
+- Parse progress % with regex: re.search(r'(\d+)\s*%', line)
