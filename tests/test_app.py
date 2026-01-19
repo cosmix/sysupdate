@@ -224,7 +224,7 @@ class TestPrintSummary:
             cli = SysUpdateCLI()
 
             with patch.object(cli.console, 'print') as mock_print:
-                cli._print_summary([], [])
+                cli._print_summary([], [], [])
 
                 # Should indicate system is up to date
                 calls_str = str(mock_print.call_args_list)
@@ -241,7 +241,7 @@ class TestPrintSummary:
             ]
 
             with patch.object(cli.console, 'print') as mock_print:
-                cli._print_summary(apt_packages, [])
+                cli._print_summary(apt_packages, [], [])
 
                 calls_str = str(mock_print.call_args_list)
                 assert '2' in calls_str  # 2 packages
@@ -260,7 +260,7 @@ class TestPrintSummary:
             ]
 
             with patch.object(cli.console, 'print') as mock_print:
-                cli._print_summary([], flatpak_packages)
+                cli._print_summary([], flatpak_packages, [])
 
                 calls_str = str(mock_print.call_args_list)
                 assert '2' in calls_str  # 2 packages
@@ -275,7 +275,7 @@ class TestPrintSummary:
             flatpak_packages = [Package(name="flatpak-app")]
 
             with patch.object(cli.console, 'print') as mock_print:
-                cli._print_summary(apt_packages, flatpak_packages)
+                cli._print_summary(apt_packages, flatpak_packages, [])
 
                 calls_str = str(mock_print.call_args_list)
                 assert '2' in calls_str  # Total 2 packages
@@ -294,7 +294,7 @@ class TestPrintSummary:
             ]
 
             with patch.object(cli.console, 'print') as mock_print:
-                cli._print_summary(apt_packages, [])
+                cli._print_summary(apt_packages, [], [])
 
                 calls_str = str(mock_print.call_args_list)
                 # Should NOT show "and X more" message - all packages displayed
