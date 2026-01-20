@@ -196,6 +196,13 @@ class SnapUpdater:
             total_snaps = len(pending)
             package_names = [p.name for p in pending]
 
+            # Report progress after finding updates (still in checking phase)
+            report(UpdateProgress(
+                phase=UpdatePhase.CHECKING,
+                progress=0.05,
+                message=f"Found {total_snaps} update(s)",
+            ))
+
             # Get current versions before update
             old_versions = await self._get_current_versions(package_names)
 

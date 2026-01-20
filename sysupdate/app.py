@@ -127,7 +127,15 @@ class SysUpdateCLI:
         def on_progress(update: UpdateProgress) -> None:
             pct = int(update.progress * 100)
             if update.phase == UpdatePhase.CHECKING:
-                desc = self._format_desc("", label, "[dim]checking...[/]")
+                # Show message if available (e.g., "Querying snap store...")
+                if update.message:
+                    # Extract short status from message
+                    msg = update.message.rstrip(".")
+                    if len(msg) > 15:
+                        msg = msg[:14] + "…"
+                    desc = self._format_desc("", label, f"[dim]{msg}[/]")
+                else:
+                    desc = self._format_desc("", label, "[dim]checking...[/]")
             elif update.phase in (UpdatePhase.DOWNLOADING, UpdatePhase.INSTALLING):
                 phase_text = "downloading" if update.phase == UpdatePhase.DOWNLOADING else "installing"
                 if update.current_package:
