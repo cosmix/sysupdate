@@ -1,13 +1,13 @@
 # sysupdate
 
-A fast, beautiful CLI for managing system updates on Ubuntu/Debian. Runs APT and Flatpak updates concurrently with real-time progress tracking.
+A fast, beautiful CLI for managing system updates on Ubuntu/Debian. Runs APT, Flatpak, and Snap updates concurrently with real-time progress tracking.
 
 ![Python](https://img.shields.io/badge/python-3.11+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ## Features
 
-- **Concurrent Updates**: APT and Flatpak run in parallel
+- **Concurrent Updates**: APT, Flatpak, and Snap run in parallel
 - **Parallel Downloads**: Uses aria2c for faster APT package downloads (optional)
 - **Real-time Progress**: Live progress bars with package names and speed
 - **Self-Update**: Built-in command to update sysupdate itself from GitHub Releases
@@ -70,10 +70,11 @@ sysupdate self-update
 
   ✓ APT                     ━━━━━━━━━━━━━━━━ 100% 0:00:42
   ✓ Flatpak                 ━━━━━━━━━━━━━━━━ 100% 0:00:15
+  ✓ Snap                    ━━━━━━━━━━━━━━━━ 100% 0:00:08
 
    ────────────────────────────────────────
 
-   ✓ Updated 12 packages (10 APT, 2 Flatpak)
+   ✓ Updated 15 packages (10 APT, 2 Flatpak, 3 Snap)
 
    APT Packages (10)
 
@@ -90,6 +91,7 @@ sysupdate self-update
 - Ubuntu/Debian-based Linux
 - `sudo` privileges
 - `flatpak` (optional)
+- `snap` (optional)
 - `aria2` (optional, for parallel downloads)
 
 ## Log Files
@@ -100,6 +102,7 @@ Logs are saved to `/tmp/update_logs/`:
 sysupdate_YYYYMMDD_HHMMSS_main.log
 sysupdate_YYYYMMDD_HHMMSS_apt.log
 sysupdate_YYYYMMDD_HHMMSS_flatpak.log
+sysupdate_YYYYMMDD_HHMMSS_snap.log
 ```
 
 ## Testing
