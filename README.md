@@ -10,6 +10,7 @@ A fast, beautiful CLI for managing system updates on Ubuntu/Debian. Runs APT and
 - **Concurrent Updates**: APT and Flatpak run in parallel
 - **Parallel Downloads**: Uses aria2c for faster APT package downloads (optional)
 - **Real-time Progress**: Live progress bars with package names and speed
+- **Self-Update**: Built-in command to update sysupdate itself from GitHub Releases
 - **Minimal Output**: Clean, focused interface using Rich
 - **Detailed Logging**: Timestamped logs saved for troubleshooting
 
@@ -49,6 +50,12 @@ sysupdate --verbose
 
 # Show version
 sysupdate --version
+
+# Check for sysupdate updates
+sysupdate self-update --check-only
+
+# Update sysupdate to latest version
+sysupdate self-update
 ```
 
 ### Example Output
