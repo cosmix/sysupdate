@@ -212,6 +212,7 @@ class SnapUpdater:
             completed = 0
             current_snap = ""
             buffer = ""
+            last_progress_report = 0.0
 
             async def read_chunk() -> bytes:
                 """Read available data from stdout."""
@@ -257,17 +258,36 @@ class SnapUpdater:
                         return [], True, ""
 
                     # Parse progress percentage (snap sometimes shows download %)
-                    progress_match = re.search(r'(\d+)\s*%', line)
-                    if progress_match:
-                        pct = int(progress_match.group(1))
+                    # Try to extract snap name from progress lines like "snap-name 42%"
+                    progress_match = re.search(r'(\S+)\s+(\d+)\s*%', line)
+                    if not progress_match:
+                        # Fallback: just percentage
+                        progress_match = re.search(r'(\d+)\s*%', line)
+                        if progress_match:
+                            pct = int(progress_match.group(1))
+                            snap_in_progress = current_snap
+                        else:
+                            pct = None
+                            snap_in_progress = ""
+                    else:
+                        snap_in_progress = progress_match.group(1)
+                        pct = int(progress_match.group(2))
+                        # Update current_snap if we extracted a name
+                        if snap_in_progress and not any(skip in snap_in_progress for skip in SNAP_SKIP_PATTERNS):
+                            current_snap = snap_in_progress
+
+                    if pct is not None:
                         progress = (completed + (pct / 100.0)) / max(total_snaps, 1)
-                        report(UpdateProgress(
-                            phase=UpdatePhase.DOWNLOADING,
-                            progress=progress,
-                            total_packages=total_snaps,
-                            completed_packages=completed,
-                            current_package=current_snap,
-                        ))
+                        # Only report if progress increased (avoid backwards movement)
+                        if progress > last_progress_report + 0.01:
+                            last_progress_report = progress
+                            report(UpdateProgress(
+                                phase=UpdatePhase.DOWNLOADING,
+                                progress=progress,
+                                total_packages=total_snaps,
+                                completed_packages=completed,
+                                current_package=current_snap,
+                            ))
 
                     # Parse snap completion: "appname (channel) version from Publisher refreshed"
                     refresh_match = re.match(r'^(\S+)\s+\([^)]+\)\s+(\S+)\s+from\s+.+\s+refreshed', line)
@@ -286,9 +306,12 @@ class SnapUpdater:
                                 new_version=new_version,
                                 status="complete",
                             ))
+                            progress = completed / max(total_snaps, 1)
+                            # Update last_progress_report for consistency
+                            last_progress_report = max(last_progress_report, progress)
                             report(UpdateProgress(
                                 phase=UpdatePhase.INSTALLING,
-                                progress=completed / max(total_snaps, 1),
+                                progress=progress,
                                 total_packages=total_snaps,
                                 completed_packages=completed,
                                 current_package=snap_name,
