@@ -21,6 +21,8 @@ classifiers = [
 ]
 dependencies = [
     "rich>=13.0.0",
+    "aiohttp>=3.9.0",
+    "packaging>=23.0",
 ]
 
 [project.optional-dependencies]
