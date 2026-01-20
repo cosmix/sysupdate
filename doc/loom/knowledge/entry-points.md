@@ -33,3 +33,19 @@
 - `sysupdate/updaters/apt.py` - APT package manager updater
 - `sysupdate/updaters/flatpak.py` - Flatpak application updater
 - `sysupdate/updaters/aria2_downloader.py` - Parallel download support
+
+## Adding New Updaters
+
+1. Create module: sysupdate/updaters/snap.py
+2. Export in **init**.py: add import and **all** entry
+3. Wire in app.py: add instance, check_available, progress task, \_run_snap method
+4. Add parser in utils/parsing.py if needed
+5. Add tests in tests/test_updaters.py
+
+## App.py Integration Points
+
+- Line ~52-53: Add updater instance in **init**
+- Line ~247-248: Check availability with check_available()
+- Line ~274-292: Add progress task and coroutine
+- Line ~314-368: Add \_run_snap() method (copy \_run_flatpak pattern)
+- Line ~370-440: Update \_print_summary() for snap packages

@@ -60,3 +60,28 @@ sysupdate/
 - Tests in `tests/` directory
 - Async test mode: auto (`pyproject.toml:40`)
 - Run with: `uv run pytest`
+
+## Test Patterns for Updaters
+
+- Use pytest.fixture for updater instance
+- Mock asyncio.create_subprocess_exec for subprocess calls
+- Test check_available: True when returncode=0, False otherwise
+- Test check_updates: verify package parsing from mock output
+- Test dry_run: verify no actual install, reaches COMPLETE phase
+
+## Test Fixtures in conftest.py
+
+- mock_subprocess: AsyncMock with returncode=0, stdout, wait, communicate
+- Add sample output fixtures (e.g., snap_update_output, snap_no_updates_output)
+- clear_availability_cache: autouse fixture to reset cache between tests
+
+## Updater File Structure
+
+Each updater module follows this structure:
+
+1. Imports from base and utils
+2. Skip patterns (frozenset for filtering)
+3. Class with name attribute
+4. **init** with \_logger and \_process
+5. check_available, check_updates, run_update methods
+6. Private \_run_X_update method for subprocess work
