@@ -60,3 +60,91 @@ Required methods for new updaters:
 - Collect lines in list for final parsing
 - Use UpdateLogger('name') to log all output
 - Parse progress % with regex: re.search(r'(\d+)\s*%', line)
+
+## Updater Protocol Implementation
+
+All updaters (APT, Flatpak, Snap) implement UpdaterProtocol:
+- async check_available() - Check tool availability via command_available()
+- async check_updates() - List updates using subprocess without installing
+- async run_update(callback, dry_run) - Execute update with progress reporting
+
+Instance state in all updaters:
+- _logger: UpdateLogger - Logs to /tmp/update_logs/
+- _process: asyncio.subprocess.Process - Active subprocess reference
+
+## Subprocess Handling Pattern
+
+All updaters use asyncio.create_subprocess_exec() for non-blocking execution:
+- Combined stderr to stdout with stderr=PIPE + STDOUT
+- Read stdout line-by-line: while True: line = await stdout.readline()
+- Decode with errors='replace' for binary/broken output
+- Call await process.wait() for exit code (check returncode != 0)
+
+## Progress Reporting Pattern
+
+Updaters use ProgressCallback (Callable[[UpdateProgress], None]):
+- create_scaled_callback() wraps callback to scale progress [0,1] -> [start,end]
+- Phases to scale: CHECKING, DOWNLOADING, INSTALLING per updater
+- Report with UpdateProgress(phase, progress, total_packages, completed, message)
+- Scale APT: checking 0-10%, downloading 10-50%, installing 50-100%
+
+## APT Parsing Pattern
+
+Uses precompiled regex patterns in parsing.py:
+- UNPACK_PATTERN: 'Unpacking pkg (new) over (old)' -> extracts old/new versions
+- SETUP_PATTERN: 'Setting up pkg (version)' -> tracks installation
+- GET_PATTERN: 'Get:N pkg' -> counts downloads
+- AptUpgradeProgressTracker encapsulates state/logic for progress calculation
+- Allocates: downloading 0-50%, installing 50-100% of total_packages
+
+## Flatpak Parsing Pattern
+
+Reads chunks (1024 bytes) instead of line-by-line due to carriage return output:
+- Buffer handling: split on both \n and \r delimiters
+- Extract snap name from: 'Downloading|Fetching snap.name'
+- Detect completion: count 'done', 'installed', 'updated' keywords
+- Filter skip patterns: Locale, Extension, Platform, GL., Sdk, Runtime
+- Environment: FLATPAK_TTY_MODE=none disables interactive progress bar
+
+## Snap Parsing Pattern
+
+Also uses chunk reading (1024 bytes) with buffer management:
+- Regex: 'snap.name (channel) version from Publisher refreshed' for completion
+- Progress: '(snap.name) (percentage)%' pattern for download tracking
+- Calls _get_current_versions() to fetch installed versions before update
+- Compares snap list output before/after to populate old_version/new_version
+- Skip patterns: snapd, core*, bare, gnome-*, gtk-common-themes
+
+## Error Handling Pattern
+
+All updaters follow consistent error handling:
+- Exceptions caught in top-level run_update() block
+- Search reversed output for first error line (E: or 'error' keyword)
+- Return UpdateResult(success=False, error_message=...) on failure
+- Report ERROR phase with message via callback
+- finally block ensures _logger.close() always executes
+- Distinguish: returncode != 0 vs exception thrown
+
+## Dry Run Pattern
+
+All updaters handle dry_run=True consistently:
+- Call check_updates() to get list of available updates
+- Report COMPLETE phase with progress=1.0
+- Set total_packages and completed_packages to len(packages)
+- Return UpdateResult(success=True, packages=packages)
+- Skip actual subprocess execution
+- Demonstrates feature without modifying system
+
+## DNF Output Parsing
+
+### check-update Format
+Output format: `package.arch    version    repository`
+- Exit code 100 = updates available
+- Exit code 0 = no updates
+- Skip metadata lines containing 'Last metadata expiration' or 'Metadata cache created'
+
+### Upgrade Progress Detection
+- 'Downloading Packages:' header → DOWNLOADING phase
+- 'Installing:' or 'Upgrading:' → INSTALLING phase
+- '(\d+)/(\d+):' pattern for individual package progress
+- 'Complete!' for completion detection

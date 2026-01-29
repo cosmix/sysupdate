@@ -85,3 +85,74 @@ Each updater module follows this structure:
 4. **init** with \_logger and \_process
 5. check_available, check_updates, run_update methods
 6. Private \_run_X_update method for subprocess work
+
+## Detected Conventions
+
+- Tests in tests/ directory
+
+
+
+## Testing File Structure
+
+Test files follow pytest conventions:
+- Location: tests/ directory at project root
+- Naming: test_*.py (e.g., test_app.py, test_updaters.py)
+- Organization: Tests grouped in classes by component (TestAptUpdater, TestFlatpakUpdater, etc.)
+- Async Tests: @pytest.mark.asyncio decorator for async test functions
+- Fixtures: Shared fixtures defined in conftest.py using @pytest.fixture decorator
+
+## Fixture Patterns
+
+Key fixtures in conftest.py:
+- clear_availability_cache: autouse=True, clears cache before/after each test
+- mock_subprocess: AsyncMock with returncode, stdout, wait, communicate attributes
+- Output fixtures: apt_update_output, apt_upgrade_output, apt_no_updates_output, flatpak_update_output, snap_refresh_output (all @pytest.fixture, return sample text)
+- Command availability cache: Tests clear _availability_cache to ensure test isolation
+
+## Mocking Approach
+
+Subprocess Mocking Pattern:
+- Use unittest.mock.AsyncMock for subprocess objects
+- Patch asyncio.create_subprocess_exec to return mock process
+- Mock proc.returncode: 0 for success, non-zero for failure
+- Mock proc.communicate() for capturing output (return tuple of bytes)
+- Example: mock_exec.side_effect = [mock_update, mock_list] for sequential calls
+- Use patch.object(updater, '_logger', MagicMock()) to silence logging in tests
+
+## Async Testing Patterns
+
+Async Test Conventions:
+- Decorate async tests with @pytest.mark.asyncio
+- Use pytest-asyncio for async fixture support
+- Use AsyncMock from unittest.mock for async functions
+- Progress tracking: Create list in test, pass callback to collect updates
+- Example: progress_updates=[], callback=lambda p: progress_updates.append(p)
+- Verify phase progression: any(p.phase == UpdatePhase.COMPLETE for p in progress_updates)
+
+## Test Coverage Areas
+
+Test Files:
+- test_updaters.py: Updater tests (check_available, check_updates, dry_run mode)
+- test_app.py: CLI tests (instantiation, run method, concurrent execution)
+- test_parsing.py: Output parsing and progress trackers
+- test_utils.py: Utility function tests (command_available, caching)
+- test_selfupdate.py: Self-update module (checksums, architecture, GitHub client)
+
+## Test Data and Sample Outputs
+
+Fixture Outputs:
+- apt_update_output: Hit/Get lines, package manager initialization
+- apt_upgrade_output: Full dpkg output with versions (libssl3 3.0.11→3.0.13)
+- flatpak_update_output: App list with tab-separated IDs, branches, status flags
+- snap_refresh_list_output: Snap table format (Name, Version, Rev, Size, Publisher)
+- Sample data used consistently across multiple test methods
+
+## Error and Exception Testing
+
+Error Handling Patterns:
+- check_available exception handling: Catches Exception, returns False
+- Network errors: Test with aiohttp.ClientError mocking
+- Timeout handling: asyncio.TimeoutError testing
+- HTTP errors: Mock response.status codes (404, 500)
+- File not found: pytest.raises(FileNotFoundError) pattern
+- RuntimeError for unsupported architecture: Verify exception message content
