@@ -49,3 +49,25 @@
 - Line ~274-292: Add progress task and coroutine
 - Line ~314-368: Add \_run_snap() method (copy \_run_flatpak pattern)
 - Line ~370-440: Update \_print_summary() for snap packages
+
+## app.py Constructor & Initialization
+
+SysUpdateCLI.__init__ (lines 48-55) instantiates 3 updaters: AptUpdater, FlatpakUpdater, SnapUpdater as instance variables. Creates Console for Rich output. Initializes logger via setup_logging(verbose).
+
+## app.py Concurrent Orchestration
+
+_run_updates() (lines 255-336): Checks all updaters available, creates Progress context. Builds coroutines conditionally. Uses asyncio.gather(*coroutines) to run all 3 updaters concurrently. task_mapping tracks result order. Casts results back to updater-specific Package lists.
+
+## app.py Progress Widget Architecture
+
+Progress context (lines 272-282): Combines TextColumn (indent), StatusColumn (spinner → ✓/✗), BarColumn (16-char bar), TaskProgressColumn. _create_progress_callback creates closure (lines 112-149) returning on_progress callback that updates descriptions based on UpdatePhase.
+
+## app.py Result Display
+
+_print_summary (lines 422-526): Creates 3 Rich Tables for APT/Flatpak/Snap packages. Each table shows name, old_version, arrow, new_version. Flatpak table shows app names + branches. Tables styled with dim headers, no borders, custom padding.
+
+## DNF Updater Files
+
+- sysupdate/updaters/dnf.py - DNF package manager implementation
+- tests/test_dnf_updater.py - DNF updater tests
+- sysupdate/utils/parsing.py - Contains parse_dnf_check_output() and DnfUpgradeProgressTracker
