@@ -110,7 +110,6 @@ async def run_self_update(check_only: bool = False) -> int:
             f"\n[green]Successfully updated from {update_result.old_version} "
             f"to {update_result.new_version}![/green]"
         )
-        console.print("[cyan]Please restart sysupdate to use the new version.[/cyan]")
         return 0
     else:
         console.print(f"\n[red]Update failed:[/red] {update_result.error_message}")

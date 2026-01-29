@@ -249,14 +249,16 @@ async def _replace_direct(
     """
     try:
         # Step 1: Backup current binary
-        current_path.rename(backup_path)
+        shutil.move(str(current_path), str(backup_path))
 
         # Step 2: Move new binary to target location
+        # Use shutil.move instead of Path.rename to handle cross-device moves
+        # (e.g., when temp directory is on a different filesystem)
         try:
-            new_binary_path.rename(current_path)
+            shutil.move(str(new_binary_path), str(current_path))
         except Exception as e:
             # Restore backup on failure
-            backup_path.rename(current_path)
+            shutil.move(str(backup_path), str(current_path))
             return False, f"Move failed: {e}. Backup restored."
 
         # Step 3: Remove backup on success
