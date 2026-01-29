@@ -234,7 +234,6 @@ class DnfUpdater:
             buffer = ""
             last_progress_report = 0.0
             in_downloading_phase = False
-            in_installing_phase = False
 
             async def read_chunk() -> bytes:
                 """Read available data from stdout."""
@@ -282,7 +281,6 @@ class DnfUpdater:
                     # Detect phase transitions
                     if "Downloading Packages:" in line:
                         in_downloading_phase = True
-                        in_installing_phase = False
                         report(UpdateProgress(
                             phase=UpdatePhase.DOWNLOADING,
                             progress=0.1,
@@ -292,7 +290,6 @@ class DnfUpdater:
 
                     if "Installing:" in line or "Upgrading:" in line:
                         in_downloading_phase = False
-                        in_installing_phase = True
                         report(UpdateProgress(
                             phase=UpdatePhase.INSTALLING,
                             progress=0.5,

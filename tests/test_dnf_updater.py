@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from sysupdate.updaters.base import Package, UpdateProgress, UpdatePhase
+from sysupdate.updaters.base import UpdateProgress, UpdatePhase
 from sysupdate.updaters.dnf import DnfUpdater
 
 
@@ -207,7 +207,7 @@ class TestDnfUpdater:
             ]
 
             with patch.object(updater, "_logger", MagicMock()):
-                result = await updater.run_update(callback=track_progress, dry_run=False)
+                await updater.run_update(callback=track_progress, dry_run=False)
 
             # Verify we got progress updates
             assert len(progress_updates) > 0
