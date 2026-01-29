@@ -3,8 +3,10 @@
 from sysupdate.utils.parsing import (
     parse_apt_output,
     parse_flatpak_output,
+    parse_dnf_check_output,
     AptUpgradeProgressTracker,
     AptUpdateProgressTracker,
+    DnfUpgradeProgressTracker,
 )
 
 
@@ -406,3 +408,241 @@ class TestAptUpdateProgressTracker:
         assert tracker.seen_repos == 7
         # Progress should still be < 1.0
         assert tracker.last_progress < 1.0
+
+
+class TestParseDnfCheckOutput:
+    """Tests for parse_dnf_check_output function."""
+
+    def test_parse_check_output(self, dnf_check_update_output):
+        """Test parsing DNF check-update output with packages."""
+        packages = parse_dnf_check_output(dnf_check_update_output)
+
+        assert len(packages) == 4
+        package_names = {p.name for p in packages}
+        assert "kernel" in package_names
+        assert "openssl-libs" in package_names
+        assert "python3" in package_names
+        assert "vim-minimal" in package_names
+
+    def test_parse_check_output_extracts_versions(self, dnf_check_update_output):
+        """Test that package versions are correctly extracted."""
+        packages = parse_dnf_check_output(dnf_check_update_output)
+
+        kernel = next((p for p in packages if p.name == "kernel"), None)
+        assert kernel is not None
+        assert kernel.new_version == "6.6.9-200.fc39"
+
+        openssl = next((p for p in packages if p.name == "openssl-libs"), None)
+        assert openssl is not None
+        assert openssl.new_version == "3.1.4-2.fc39"
+
+    def test_parse_check_output_empty(self, dnf_no_updates_output):
+        """Test parsing when no updates are available."""
+        packages = parse_dnf_check_output(dnf_no_updates_output)
+        assert len(packages) == 0
+
+    def test_parse_empty_output(self):
+        """Test parsing empty output."""
+        packages = parse_dnf_check_output("")
+        assert len(packages) == 0
+
+    def test_skips_metadata_lines(self):
+        """Test that metadata lines are skipped."""
+        output = """Last metadata expiration check: 0:15:42 ago on Thu Jan 11 10:00:00 2024.
+Metadata cache created recently.
+
+kernel.x86_64    6.6.9-200.fc39    updates
+"""
+        packages = parse_dnf_check_output(output)
+
+        assert len(packages) == 1
+        assert packages[0].name == "kernel"
+
+    def test_skips_separator_lines(self):
+        """Test that separator lines are skipped."""
+        output = """===========================
+kernel.x86_64    6.6.9-200.fc39    updates
+----------------------------
+openssl-libs.x86_64    3.1.4-2.fc39    updates
+"""
+        packages = parse_dnf_check_output(output)
+
+        assert len(packages) == 2
+
+    def test_status_is_pending(self, dnf_check_update_output):
+        """Test that parsed packages have pending status."""
+        packages = parse_dnf_check_output(dnf_check_update_output)
+
+        for pkg in packages:
+            assert pkg.status == "pending"
+
+
+class TestDnfUpgradeProgressTracker:
+    """Tests for DnfUpgradeProgressTracker class."""
+
+    def test_initialization(self):
+        """Test tracker starts with default values."""
+        tracker = DnfUpgradeProgressTracker()
+
+        assert tracker.total_packages == 0
+        assert tracker.download_count == 0
+        assert tracker.install_count == 0
+        assert tracker.current_package == ""
+        assert tracker.last_progress == 0.0
+
+    def test_downloading_packages_header(self):
+        """Test detecting 'Downloading Packages:' header."""
+        tracker = DnfUpgradeProgressTracker()
+
+        result = tracker.parse_line("Downloading Packages:")
+
+        assert result is not None
+        assert result["phase"] == "downloading"
+        assert result["progress"] == 0.0
+
+    def test_download_progress(self):
+        """Test tracking download progress via (N/M) lines."""
+        tracker = DnfUpgradeProgressTracker()
+
+        # Start download phase
+        tracker.parse_line("Downloading Packages:")
+
+        result = tracker.parse_line("(1/2): openssl-libs-3.1.4-2.fc39.x86_64.rpm  100%")
+
+        assert result is not None
+        assert result["phase"] == "downloading"
+        assert result["progress"] == 0.25  # 1/2 * 0.5 = 0.25
+        assert tracker.download_count == 1
+        assert tracker.total_packages == 2
+
+    def test_download_progress_multiple_packages(self):
+        """Test tracking download progress with multiple packages."""
+        tracker = DnfUpgradeProgressTracker()
+
+        # Start download phase
+        tracker.parse_line("Downloading Packages:")
+
+        tracker.parse_line("(1/4): pkg1-1.0.rpm  100%")
+        assert tracker.last_progress == 0.125  # 1/4 * 0.5
+
+        result = tracker.parse_line("(2/4): pkg2-1.0.rpm  100%")
+        assert result is not None
+        assert result["progress"] == 0.25  # 2/4 * 0.5
+
+        result = tracker.parse_line("(4/4): pkg4-1.0.rpm  100%")
+        assert result is not None
+        assert result["progress"] == 0.5  # 4/4 * 0.5
+
+    def test_running_transaction(self):
+        """Test detecting 'Running transaction' phase."""
+        tracker = DnfUpgradeProgressTracker()
+
+        result = tracker.parse_line("Running transaction")
+
+        assert result is not None
+        assert result["phase"] == "installing"
+        assert result["progress"] == 0.5
+
+    def test_install_progress(self):
+        """Test tracking installation progress via Upgrading lines."""
+        tracker = DnfUpgradeProgressTracker()
+        tracker.total_packages = 2
+
+        # Enter install phase
+        tracker.parse_line("Running transaction")
+
+        result = tracker.parse_line("  Upgrading        : openssl-libs-3.1.4-2.fc39.x86_64                       1/4")
+
+        assert result is not None
+        assert result["phase"] == "installing"
+        assert result["progress"] == 0.75  # 0.5 + 1/2 * 0.5 = 0.75
+        assert tracker.install_count == 1
+
+    def test_complete_line(self):
+        """Test detecting 'Complete!' line."""
+        tracker = DnfUpgradeProgressTracker()
+
+        result = tracker.parse_line("Complete!")
+
+        assert result is not None
+        assert result["phase"] == "complete"
+        assert result["progress"] == 1.0
+
+    def test_upgraded_summary_line(self):
+        """Test detecting 'Upgraded:' summary line."""
+        tracker = DnfUpgradeProgressTracker()
+        tracker.total_packages = 2
+
+        result = tracker.parse_line("Upgraded:")
+
+        assert result is not None
+        assert result["phase"] == "installing"
+        assert result["message"] == "Finalizing..."
+
+    def test_full_upgrade_sequence(self):
+        """Test a complete upgrade sequence."""
+        tracker = DnfUpgradeProgressTracker()
+
+        # Download header
+        result = tracker.parse_line("Downloading Packages:")
+        assert result is not None
+        assert result["phase"] == "downloading"
+
+        # Downloads
+        result = tracker.parse_line("(1/2): pkg1-1.0.rpm  100%")
+        assert result is not None
+        assert result["progress"] == 0.25
+
+        result = tracker.parse_line("(2/2): pkg2-1.0.rpm  100%")
+        assert result is not None
+        assert result["progress"] == 0.5
+
+        # Transaction
+        result = tracker.parse_line("Running transaction")
+        assert result is not None
+        assert result["phase"] == "installing"
+        assert result["progress"] == 0.5
+
+        # Installation
+        result = tracker.parse_line("  Upgrading        : pkg1-1.0.x86_64                       1/4")
+        assert result is not None
+        assert result["phase"] == "installing"
+        assert result["progress"] == 0.75
+
+        result = tracker.parse_line("  Upgrading        : pkg2-1.0.x86_64                       2/4")
+        assert result is not None
+        assert result["progress"] == 1.0
+
+        # Complete
+        result = tracker.parse_line("Complete!")
+        assert result is not None
+        assert result["phase"] == "complete"
+        assert result["progress"] == 1.0
+
+    def test_progress_only_increases(self):
+        """Test that progress never decreases."""
+        tracker = DnfUpgradeProgressTracker()
+
+        tracker.parse_line("Downloading Packages:")
+        tracker.parse_line("(2/4): pkg2-1.0.rpm  100%")
+        assert tracker.last_progress == 0.25  # 2/4 * 0.5
+
+        # Earlier package should not decrease progress
+        result = tracker.parse_line("(1/4): pkg1-1.0.rpm  100%")
+        assert result is None  # No update because progress would decrease
+
+    def test_ignores_irrelevant_lines(self):
+        """Test that non-progress lines are ignored."""
+        tracker = DnfUpgradeProgressTracker()
+
+        result = tracker.parse_line("Dependencies resolved.")
+        assert result is None
+
+        result = tracker.parse_line("Transaction Summary")
+        assert result is None
+
+        result = tracker.parse_line("================================================================================")
+        assert result is None
+
+        result = tracker.parse_line("Total download size: 170 M")
+        assert result is None

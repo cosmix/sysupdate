@@ -158,3 +158,75 @@ def snap_no_updates_output():
     """Sample snap refresh --list output when no updates available."""
     return """All snaps up to date.
 """
+
+
+@pytest.fixture
+def dnf_check_update_output():
+    """Sample DNF check-update output showing available updates."""
+    return """Last metadata expiration check: 0:15:42 ago on Thu Jan 11 10:00:00 2024.
+
+kernel.x86_64                   6.6.9-200.fc39             updates
+openssl-libs.x86_64             3.1.4-2.fc39               updates
+python3.x86_64                  3.12.1-1.fc39              updates
+vim-minimal.x86_64              9.1.016-1.fc39             updates
+"""
+
+
+@pytest.fixture
+def dnf_no_updates_output():
+    """Sample DNF check-update output when no updates available."""
+    return """Last metadata expiration check: 0:15:42 ago on Thu Jan 11 10:00:00 2024.
+"""
+
+
+@pytest.fixture
+def dnf_upgrade_output():
+    """Sample DNF upgrade output during actual update with download and transaction phases."""
+    return """Dependencies resolved.
+================================================================================
+ Package                 Arch        Version                 Repository    Size
+================================================================================
+Upgrading:
+ kernel                  x86_64      6.6.9-200.fc39          updates      168 M
+ openssl-libs            x86_64      3.1.4-2.fc39            updates      2.1 M
+
+Transaction Summary
+================================================================================
+Upgrade  2 Packages
+
+Total download size: 170 M
+Downloading Packages:
+(1/2): openssl-libs-3.1.4-2.fc39.x86_64.rpm      100% | 2.1 MB/s |  2.1 MB  00:01
+(2/2): kernel-6.6.9-200.fc39.x86_64.rpm          100% | 5.0 MB/s | 168 MB  00:33
+--------------------------------------------------------------------------------
+Total                                            5.0 MB/s | 170 MB  00:34
+Running transaction check
+Transaction check succeeded.
+Running transaction test
+Transaction test succeeded.
+Running transaction
+  Upgrading        : openssl-libs-3.1.4-2.fc39.x86_64                       1/4
+  Upgrading        : kernel-6.6.9-200.fc39.x86_64                           2/4
+  Cleanup          : openssl-libs-3.1.3-1.fc39.x86_64                       3/4
+  Cleanup          : kernel-6.5.0-100.fc39.x86_64                           4/4
+  Verifying        : openssl-libs-3.1.4-2.fc39.x86_64                       1/4
+  Verifying        : openssl-libs-3.1.3-1.fc39.x86_64                       2/4
+  Verifying        : kernel-6.6.9-200.fc39.x86_64                           3/4
+  Verifying        : kernel-6.5.0-100.fc39.x86_64                           4/4
+
+Upgraded:
+  kernel-6.6.9-200.fc39.x86_64         openssl-libs-3.1.4-2.fc39.x86_64
+
+Complete!
+"""
+
+
+@pytest.fixture
+def dnf_list_installed_output():
+    """Sample DNF list installed output showing current versions."""
+    return """Installed Packages
+kernel.x86_64                    6.5.0-100.fc39                      @updates
+openssl-libs.x86_64              3.1.3-1.fc39                        @updates
+python3.x86_64                   3.12.0-1.fc39                       @fedora
+vim-minimal.x86_64               9.1.015-1.fc39                      @updates
+"""
