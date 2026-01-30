@@ -11,6 +11,7 @@ from rich.progress import (
     TextColumn,
     BarColumn,
     TaskProgressColumn,
+    TimeElapsedColumn,
     Task as RichTask,
 )
 from rich.prompt import Confirm
@@ -346,6 +347,7 @@ class SysUpdateCLI:
             TextColumn("{task.description}"),
             BarColumn(bar_width=16, style="dim", complete_style="white", finished_style="green"),
             TaskProgressColumn(),
+            TimeElapsedColumn(),
             SpeedColumn(),
             ETAColumn(),
             console=self.console,
