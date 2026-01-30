@@ -1,14 +1,14 @@
 [project]
 name = "sysupdate"
 dynamic = ["version"]
-description = "A beautiful TUI system update manager for Apt and Flatpak Linux systems."
+description = "A beautiful CLI system update manager for Linux with multi-distro support."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
     { name = "Dimosthenis Kaponis" }
 ]
-keywords = ["tui", "system", "update", "apt", "flatpak", "terminal"]
+keywords = ["cli", "system", "update", "apt", "dnf", "pacman", "flatpak", "snap", "terminal", "linux", "multi-distro", "fedora", "arch", "ubuntu", "debian"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",

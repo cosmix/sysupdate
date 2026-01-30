@@ -50,7 +50,7 @@ def main() -> int:
     """Main entry point for sysupdate."""
     parser = argparse.ArgumentParser(
         prog="sysupdate",
-        description="A beautiful, fast CLI system update manager for apt and flatpak.",
+        description="A beautiful CLI system update manager with multi-distro support (APT, DNF, Pacman, Flatpak, Snap).",
     )
     parser.add_argument(
         "-v", "--verbose",

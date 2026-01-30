@@ -1,10 +1,10 @@
 """Integration tests for the main application."""
 
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from rich.console import Console
 
-from sysupdate.app import SysUpdateCLI
+from sysupdate.app import SysUpdateCLI, UpdaterConfig
 from sysupdate.updaters.base import UpdateResult, Package
 
 
@@ -20,8 +20,8 @@ class TestSysUpdateCLI:
             assert cli.verbose is False
             assert cli.dry_run is False
             assert isinstance(cli.console, Console)
-            assert cli._apt_updater is not None
-            assert cli._flatpak_updater is not None
+            assert cli._updaters is not None
+            assert len(cli._updaters) == 5  # APT, Flatpak, Snap, DNF, Pacman
 
     def test_instantiation_with_options(self):
         """Test CLI with verbose and dry_run options."""
@@ -68,25 +68,47 @@ class TestSysUpdateCLI:
                 calls_str = str(mock_print.call_args_list)
                 assert 'v2.' in calls_str  # Version number present
 
+    def test_updater_configs(self):
+        """Test that updater configs have correct labels."""
+        with patch('sysupdate.app.setup_logging'):
+            cli = SysUpdateCLI()
+
+            labels = [cfg.label for cfg in cli._updaters]
+            assert "APT" in labels
+            assert "Flatpak" in labels
+            assert "Snap" in labels
+            assert "DNF" in labels
+            assert "Pacman" in labels
+
 
 class TestCLIIntegration:
     """Integration tests for concurrent update execution."""
 
+    def _get_updater_by_label(self, cli: SysUpdateCLI, label: str) -> UpdaterConfig:
+        """Helper to get an updater config by label."""
+        for cfg in cli._updaters:
+            if cfg.label == label:
+                return cfg
+        raise ValueError(f"No updater with label {label}")
+
     @pytest.mark.asyncio
     async def test_run_updates_checks_availability(self):
-        """Test that _run_updates checks if APT and Flatpak are available."""
-        with patch('sysupdate.app.setup_logging'):
+        """Test that _run_updates checks if all updaters are available."""
+        with patch('sysupdate.app.setup_logging'), \
+             patch('sysupdate.app.Aria2Downloader') as mock_aria2:
+            mock_aria2.return_value.check_available = AsyncMock(return_value=True)
+
             cli = SysUpdateCLI()
 
-            # Mock check_available for both updaters
-            cli._apt_updater.check_available = AsyncMock(return_value=False)
-            cli._flatpak_updater.check_available = AsyncMock(return_value=False)
+            # Mock all updaters as unavailable
+            for cfg in cli._updaters:
+                cfg.updater.check_available = AsyncMock(return_value=False)
 
             result = await cli._run_updates()
 
-            # Should call check_available on both
-            cli._apt_updater.check_available.assert_called_once()
-            cli._flatpak_updater.check_available.assert_called_once()
+            # Should call check_available on all updaters
+            for cfg in cli._updaters:
+                cfg.updater.check_available.assert_called_once()
 
             # Should return success even if nothing to update
             assert result == 0
@@ -94,124 +116,140 @@ class TestCLIIntegration:
     @pytest.mark.asyncio
     async def test_run_updates_apt_only(self):
         """Test updates when only APT is available."""
-        with patch('sysupdate.app.setup_logging'):
+        with patch('sysupdate.app.setup_logging'), \
+             patch('sysupdate.app.Aria2Downloader') as mock_aria2:
+            mock_aria2.return_value.check_available = AsyncMock(return_value=True)
+
             cli = SysUpdateCLI()
 
-            # Mock APT available, Flatpak not
-            cli._apt_updater.check_available = AsyncMock(return_value=True)
-            cli._flatpak_updater.check_available = AsyncMock(return_value=False)
-
-            # Mock APT update result
-            apt_packages = [
-                Package(name="package1", old_version="1.0", new_version="2.0"),
-                Package(name="package2", old_version="1.5", new_version="1.6"),
-            ]
-            cli._apt_updater.run_update = AsyncMock(
-                return_value=UpdateResult(success=True, packages=apt_packages)
-            )
+            # Mock all updaters as unavailable except APT
+            for cfg in cli._updaters:
+                if cfg.label == "APT":
+                    cfg.updater.check_available = AsyncMock(return_value=True)
+                    apt_packages = [
+                        Package(name="package1", old_version="1.0", new_version="2.0"),
+                        Package(name="package2", old_version="1.5", new_version="1.6"),
+                    ]
+                    cfg.updater.run_update = AsyncMock(
+                        return_value=UpdateResult(success=True, packages=apt_packages)
+                    )
+                else:
+                    cfg.updater.check_available = AsyncMock(return_value=False)
 
             result = await cli._run_updates()
 
             assert result == 0
-            cli._apt_updater.run_update.assert_called_once()
-            cli._flatpak_updater.check_available.assert_called_once()
+            apt_cfg = self._get_updater_by_label(cli, "APT")
+            apt_cfg.updater.run_update.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_run_updates_flatpak_only(self):
         """Test updates when only Flatpak is available."""
-        with patch('sysupdate.app.setup_logging'):
+        with patch('sysupdate.app.setup_logging'), \
+             patch('sysupdate.app.Aria2Downloader') as mock_aria2:
+            mock_aria2.return_value.check_available = AsyncMock(return_value=True)
+
             cli = SysUpdateCLI()
 
-            # Mock Flatpak available, APT not
-            cli._apt_updater.check_available = AsyncMock(return_value=False)
-            cli._flatpak_updater.check_available = AsyncMock(return_value=True)
-
-            # Mock Flatpak update result
-            flatpak_packages = [
-                Package(name="org.example.App"),
-            ]
-            cli._flatpak_updater.run_update = AsyncMock(
-                return_value=UpdateResult(success=True, packages=flatpak_packages)
-            )
+            # Mock all updaters as unavailable except Flatpak
+            for cfg in cli._updaters:
+                if cfg.label == "Flatpak":
+                    cfg.updater.check_available = AsyncMock(return_value=True)
+                    flatpak_packages = [Package(name="org.example.App")]
+                    cfg.updater.run_update = AsyncMock(
+                        return_value=UpdateResult(success=True, packages=flatpak_packages)
+                    )
+                else:
+                    cfg.updater.check_available = AsyncMock(return_value=False)
 
             result = await cli._run_updates()
 
             assert result == 0
-            cli._apt_updater.check_available.assert_called_once()
-            cli._flatpak_updater.run_update.assert_called_once()
+            flatpak_cfg = self._get_updater_by_label(cli, "Flatpak")
+            flatpak_cfg.updater.run_update.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_run_updates_concurrent_execution(self):
         """Test that APT and Flatpak updates run concurrently."""
-        with patch('sysupdate.app.setup_logging'):
+        with patch('sysupdate.app.setup_logging'), \
+             patch('sysupdate.app.Aria2Downloader') as mock_aria2:
+            mock_aria2.return_value.check_available = AsyncMock(return_value=True)
+
             cli = SysUpdateCLI()
 
-            # Both available
-            cli._apt_updater.check_available = AsyncMock(return_value=True)
-            cli._flatpak_updater.check_available = AsyncMock(return_value=True)
-
-            # Mock successful updates
-            apt_packages = [Package(name="apt-pkg")]
-            flatpak_packages = [Package(name="flatpak-app")]
-
-            cli._apt_updater.run_update = AsyncMock(
-                return_value=UpdateResult(success=True, packages=apt_packages)
-            )
-            cli._flatpak_updater.run_update = AsyncMock(
-                return_value=UpdateResult(success=True, packages=flatpak_packages)
-            )
+            # Mock APT and Flatpak available, others not
+            for cfg in cli._updaters:
+                if cfg.label in ("APT", "Flatpak"):
+                    cfg.updater.check_available = AsyncMock(return_value=True)
+                    packages = [Package(name=f"{cfg.label.lower()}-pkg")]
+                    cfg.updater.run_update = AsyncMock(
+                        return_value=UpdateResult(success=True, packages=packages)
+                    )
+                else:
+                    cfg.updater.check_available = AsyncMock(return_value=False)
 
             result = await cli._run_updates()
 
             assert result == 0
             # Both updaters should be called
-            cli._apt_updater.run_update.assert_called_once()
-            cli._flatpak_updater.run_update.assert_called_once()
+            self._get_updater_by_label(cli, "APT").updater.run_update.assert_called_once()
+            self._get_updater_by_label(cli, "Flatpak").updater.run_update.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_run_updates_handles_exceptions(self):
         """Test that exceptions in one updater don't stop the other."""
-        with patch('sysupdate.app.setup_logging'):
+        with patch('sysupdate.app.setup_logging'), \
+             patch('sysupdate.app.Aria2Downloader') as mock_aria2:
+            mock_aria2.return_value.check_available = AsyncMock(return_value=True)
+
             cli = SysUpdateCLI()
 
-            # Both available
-            cli._apt_updater.check_available = AsyncMock(return_value=True)
-            cli._flatpak_updater.check_available = AsyncMock(return_value=True)
-
-            # APT raises exception, Flatpak succeeds
-            cli._apt_updater.run_update = AsyncMock(
-                side_effect=RuntimeError("APT failed")
-            )
-            flatpak_packages = [Package(name="flatpak-app")]
-            cli._flatpak_updater.run_update = AsyncMock(
-                return_value=UpdateResult(success=True, packages=flatpak_packages)
-            )
+            # Mock APT and Flatpak available, others not
+            for cfg in cli._updaters:
+                if cfg.label == "APT":
+                    cfg.updater.check_available = AsyncMock(return_value=True)
+                    cfg.updater.run_update = AsyncMock(side_effect=RuntimeError("APT failed"))
+                elif cfg.label == "Flatpak":
+                    cfg.updater.check_available = AsyncMock(return_value=True)
+                    flatpak_packages = [Package(name="flatpak-app")]
+                    cfg.updater.run_update = AsyncMock(
+                        return_value=UpdateResult(success=True, packages=flatpak_packages)
+                    )
+                else:
+                    cfg.updater.check_available = AsyncMock(return_value=False)
 
             result = await cli._run_updates()
 
             # Should still complete and return success
             assert result == 0
-            cli._apt_updater.run_update.assert_called_once()
-            cli._flatpak_updater.run_update.assert_called_once()
+            self._get_updater_by_label(cli, "APT").updater.run_update.assert_called_once()
+            self._get_updater_by_label(cli, "Flatpak").updater.run_update.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_run_updates_passes_dry_run(self):
         """Test that dry_run flag is passed to updaters."""
-        with patch('sysupdate.app.setup_logging'):
+        with patch('sysupdate.app.setup_logging'), \
+             patch('sysupdate.app.Aria2Downloader') as mock_aria2:
+            mock_aria2.return_value.check_available = AsyncMock(return_value=True)
+
             cli = SysUpdateCLI(dry_run=True)
 
-            cli._apt_updater.check_available = AsyncMock(return_value=True)
-            cli._flatpak_updater.check_available = AsyncMock(return_value=False)
-
-            cli._apt_updater.run_update = AsyncMock(
-                return_value=UpdateResult(success=True, packages=[])
-            )
+            # Mock only APT available
+            for cfg in cli._updaters:
+                if cfg.label == "APT":
+                    cfg.updater.check_available = AsyncMock(return_value=True)
+                    cfg.updater.run_update = AsyncMock(
+                        return_value=UpdateResult(success=True, packages=[])
+                    )
+                else:
+                    cfg.updater.check_available = AsyncMock(return_value=False)
 
             await cli._run_updates()
 
             # Check dry_run was passed
-            cli._apt_updater.run_update.assert_called_once()
-            call_args = cli._apt_updater.run_update.call_args
+            apt_cfg = self._get_updater_by_label(cli, "APT")
+            apt_cfg.updater.run_update.assert_called_once()
+            call_args = apt_cfg.updater.run_update.call_args
             assert call_args.kwargs['dry_run'] is True
 
 
@@ -223,8 +261,10 @@ class TestPrintSummary:
         with patch('sysupdate.app.setup_logging'):
             cli = SysUpdateCLI()
 
+            results = {"APT": [], "Flatpak": [], "Snap": [], "DNF": [], "Pacman": []}
+
             with patch.object(cli.console, 'print') as mock_print:
-                cli._print_summary([], [], [], [], [])
+                cli._print_summary(results)
 
                 # Should indicate system is up to date
                 calls_str = str(mock_print.call_args_list)
@@ -239,9 +279,10 @@ class TestPrintSummary:
                 Package(name="pkg1", old_version="1.0", new_version="2.0"),
                 Package(name="pkg2", old_version="1.5", new_version="1.6"),
             ]
+            results = {"APT": apt_packages, "Flatpak": [], "Snap": [], "DNF": [], "Pacman": []}
 
             with patch.object(cli.console, 'print') as mock_print:
-                cli._print_summary(apt_packages, [], [], [], [])
+                cli._print_summary(results)
 
                 calls_str = str(mock_print.call_args_list)
                 assert '2' in calls_str  # 2 packages
@@ -258,9 +299,10 @@ class TestPrintSummary:
                 Package(name="org.example.App1"),
                 Package(name="org.example.App2"),
             ]
+            results = {"APT": [], "Flatpak": flatpak_packages, "Snap": [], "DNF": [], "Pacman": []}
 
             with patch.object(cli.console, 'print') as mock_print:
-                cli._print_summary([], flatpak_packages, [], [], [])
+                cli._print_summary(results)
 
                 calls_str = str(mock_print.call_args_list)
                 assert '2' in calls_str  # 2 packages
@@ -273,9 +315,10 @@ class TestPrintSummary:
 
             apt_packages = [Package(name="apt-pkg")]
             flatpak_packages = [Package(name="flatpak-app")]
+            results = {"APT": apt_packages, "Flatpak": flatpak_packages, "Snap": [], "DNF": [], "Pacman": []}
 
             with patch.object(cli.console, 'print') as mock_print:
-                cli._print_summary(apt_packages, flatpak_packages, [], [], [])
+                cli._print_summary(results)
 
                 calls_str = str(mock_print.call_args_list)
                 assert '2' in calls_str  # Total 2 packages
@@ -292,11 +335,36 @@ class TestPrintSummary:
                 Package(name=f"pkg{i}", old_version="1.0", new_version="2.0")
                 for i in range(20)
             ]
+            results = {"APT": apt_packages, "Flatpak": [], "Snap": [], "DNF": [], "Pacman": []}
 
             with patch.object(cli.console, 'print') as mock_print:
-                cli._print_summary(apt_packages, [], [], [], [])
+                cli._print_summary(results)
 
                 calls_str = str(mock_print.call_args_list)
                 # Should NOT show "and X more" message - all packages displayed
                 assert 'more' not in calls_str.lower()
                 assert '20' in calls_str  # Count shown in header
+
+    def test_print_summary_all_managers(self):
+        """Test summary with packages from all managers."""
+        with patch('sysupdate.app.setup_logging'):
+            cli = SysUpdateCLI()
+
+            results = {
+                "APT": [Package(name="apt-pkg", old_version="1.0", new_version="2.0")],
+                "Flatpak": [Package(name="flatpak-app")],
+                "Snap": [Package(name="snap-app", old_version="1.0", new_version="2.0")],
+                "DNF": [Package(name="dnf-pkg", old_version="1.0", new_version="2.0")],
+                "Pacman": [Package(name="pacman-pkg", old_version="1.0", new_version="2.0")],
+            }
+
+            with patch.object(cli.console, 'print') as mock_print:
+                cli._print_summary(results)
+
+                calls_str = str(mock_print.call_args_list)
+                assert '5' in calls_str  # Total 5 packages
+                assert 'APT' in calls_str
+                assert 'Flatpak' in calls_str
+                assert 'Snap' in calls_str
+                assert 'DNF' in calls_str
+                assert 'Pacman' in calls_str
