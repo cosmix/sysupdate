@@ -39,10 +39,8 @@ def get_architecture() -> str:
 def get_binary_path() -> Path:
     """Find the current sysupdate binary path.
 
-    Searches in the following order:
-    1. sys.executable (if running as installed package)
-    2. shutil.which("sysupdate") (if in PATH)
-    3. Common installation paths
+    For PyApp binaries, the actual binary is the parent process that spawned
+    the embedded Python interpreter. We find it via /proc/<ppid>/exe.
 
     Returns:
         Path to current binary
@@ -50,37 +48,25 @@ def get_binary_path() -> Path:
     Raises:
         RuntimeError: If binary cannot be found
     """
-    # Check sys.executable first
+    # Check parent process first (for PyApp: the wrapper that spawned Python)
+    ppid = os.getppid()
+    try:
+        parent_exe = Path(f"/proc/{ppid}/exe").resolve()
+        if parent_exe.name == "sysupdate":
+            return parent_exe
+    except (OSError, PermissionError):
+        pass
+
+    # Check sys.executable (for direct PyApp or venv installs)
     if sys.executable:
         exe_path = Path(sys.executable)
         if exe_path.name in ("sysupdate", "sysupdate.exe"):
             return exe_path
 
-        # Check if running via python -m or similar
-        # In this case, look for sysupdate in same directory or parent
-        potential_paths = [
-            exe_path.parent / "sysupdate",
-            exe_path.parent.parent / "bin" / "sysupdate",
-        ]
-        for path in potential_paths:
-            if path.exists() and path.is_file():
-                return path
-
     # Check PATH
     which_result = shutil.which("sysupdate")
     if which_result:
         return Path(which_result).resolve()
-
-    # Check common installation paths
-    common_paths = [
-        Path.home() / ".local" / "bin" / "sysupdate",
-        Path("/usr/local/bin/sysupdate"),
-        Path("/usr/bin/sysupdate"),
-    ]
-
-    for path in common_paths:
-        if path.exists() and path.is_file():
-            return path
 
     raise RuntimeError(
         "Could not locate sysupdate binary. "
@@ -194,7 +180,7 @@ async def _replace_with_sudo(
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    stdout, stderr = await proc.communicate()
+    _, stderr = await proc.communicate()
 
     if proc.returncode != 0:
         error = stderr.decode().strip() if stderr else "Failed to backup current binary"
@@ -206,19 +192,17 @@ async def _replace_with_sudo(
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    stdout, stderr = await proc.communicate()
+    _, stderr = await proc.communicate()
 
     if proc.returncode != 0:
         error = stderr.decode().strip() if stderr else "Failed to move new binary"
-
-        # Attempt to restore backup
+        # Restore backup
         restore_proc = await asyncio.create_subprocess_exec(
             "sudo", "mv", str(backup_path), str(current_path),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
         await restore_proc.communicate()
-
         return False, f"Move failed: {error}. Backup restored."
 
     # Step 3: Remove backup on success
@@ -252,8 +236,6 @@ async def _replace_direct(
         shutil.move(str(current_path), str(backup_path))
 
         # Step 2: Move new binary to target location
-        # Use shutil.move instead of Path.rename to handle cross-device moves
-        # (e.g., when temp directory is on a different filesystem)
         try:
             shutil.move(str(new_binary_path), str(current_path))
         except Exception as e:
