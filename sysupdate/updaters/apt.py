@@ -72,8 +72,11 @@ class AptUpdater:
                         old_version=match.group(3),
                     ))
 
-        except Exception:
-            pass
+        except FileNotFoundError:
+            return []  # Package manager not installed
+        except Exception as e:
+            if self._logger:
+                self._logger.log(f"Error checking updates: {e}")
 
         return packages
 

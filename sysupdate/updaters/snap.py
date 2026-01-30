@@ -70,8 +70,11 @@ class SnapUpdater:
                         new_version=version,
                     ))
 
-        except Exception:
-            pass
+        except FileNotFoundError:
+            return []  # Package manager not installed
+        except Exception as e:
+            if self._logger:
+                self._logger.log(f"Error checking updates: {e}")
 
         return packages
 
@@ -95,8 +98,11 @@ class SnapUpdater:
                     name = parts[0].strip()
                     if name in package_names:
                         versions[name] = parts[1].strip()
-        except Exception:
-            pass
+        except FileNotFoundError:
+            return {}  # Package manager not installed
+        except Exception as e:
+            if self._logger:
+                self._logger.log(f"Error getting current versions: {e}")
 
         return versions
 

@@ -87,9 +87,9 @@ class AptCacheWrapper:
                 for uri in candidate.uris:
                     if uri:
                         uris.append(uri)
-            except Exception:
+            except (AttributeError, TypeError):
                 # Some packages may not have URIs available
-                pass
+                continue
 
             if not uris:
                 continue
@@ -102,8 +102,8 @@ class AptCacheWrapper:
                 sha256 = candidate.sha256 or ""
                 sha1 = candidate.sha1 or ""
                 md5 = candidate.md5 or ""
-            except Exception:
-                pass
+            except (AttributeError, TypeError):
+                pass  # Hash attributes may be unavailable for some packages
 
             # Get old version if upgrading
             old_version = ""
