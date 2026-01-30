@@ -34,7 +34,7 @@ from .utils.aria2 import prompt_install_aria2
 # ============================================================================
 
 # Fixed width for description column (prefix + label + detail text)
-DESC_WIDTH = 24
+DESC_WIDTH = 30
 
 # Progress thresholds - fraction of progress bar reserved for checking phase
 CHECKING_PROGRESS_END = 0.1
@@ -102,23 +102,13 @@ class StatusColumn(SpinnerColumn):
 
 
 class PhaseAwareProgressColumn(TaskProgressColumn):
-    """Task progress column that hides percentage during checking phase."""
+    """Task progress column that shows dim placeholder during indeterminate phase."""
 
     def render(self, task: RichTask) -> Text:
-        phase = task.fields.get("phase", "checking")
-        if phase == "checking":
-            return Text("", style="dim")
-        return super().render(task)
-
-
-class PhaseAwareBarColumn(BarColumn):
-    """Bar column that shows pulse animation during checking phase."""
-
-    def render(self, task: RichTask) -> Text:
-        phase = task.fields.get("phase", "checking")
-        if phase == "checking":
-            # Return empty/dim bar during checking
-            return Text(" " * (self.bar_width or 16), style="dim")
+        # When total is None (indeterminate), show placeholder to maintain width
+        if task.total is None:
+            # Match width of "100%" (4 chars)
+            return Text("  - ", style="dim")
         return super().render(task)
 
 
@@ -133,13 +123,22 @@ class SpeedColumn(ProgressColumn):
 
 
 class ETAColumn(ProgressColumn):
-    """Shows ETA when available."""
+    """Shows ETA when available with fixed width."""
+
+    # Fixed width for ETA column (e.g., "ETA 10m30s" = 10 chars)
+    ETA_WIDTH = 10
 
     def render(self, task: RichTask) -> Text:
         eta = task.fields.get("eta", "")
         if eta:
-            return Text(f"ETA {eta}", style="dim")
-        return Text("", style="dim")
+            text = f"ETA {eta}"
+            # Pad or truncate to fixed width
+            if len(text) < self.ETA_WIDTH:
+                text = text + " " * (self.ETA_WIDTH - len(text))
+            elif len(text) > self.ETA_WIDTH:
+                text = text[:self.ETA_WIDTH]
+            return Text(text, style="dim")
+        return Text(" " * self.ETA_WIDTH, style="dim")
 
 
 class SysUpdateCLI:
@@ -230,16 +229,9 @@ class SysUpdateCLI:
             # Pad to fixed width
             return text + " " * (DESC_WIDTH - visible_len)
         elif visible_len > DESC_WIDTH:
-            # Truncate: find how much to trim from the end
-            excess = visible_len - DESC_WIDTH
-            # Remove markup, truncate, but keep the structure
-            if detail:
-                # Truncate detail portion
-                detail_visible = _MARKUP_PATTERN.sub("", detail)
-                if len(detail_visible) > excess:
-                    new_detail = detail_visible[:-excess-1] + "…"
-                    return f"{prefix}{label} [dim]{new_detail}[/]"
-            return text[:DESC_WIDTH]
+            # Truncate visible text and rebuild with markup
+            truncated_visible = visible[:DESC_WIDTH - 1] + "…"
+            return truncated_visible
         return text
 
     def _create_progress_callback(
@@ -262,16 +254,16 @@ class SysUpdateCLI:
             phase_value = update.phase.value if update.phase else "checking"
 
             if update.phase == UpdatePhase.CHECKING:
-                # During checking, show only spinner and message (no progress bar/percentage)
+                # During checking, show pulse animation (don't set total/completed)
                 if update.message:
-                    # Extract short status from message (increased limit to 25 chars)
+                    # Extract short status from message (limit to 25 chars)
                     msg = update.message.rstrip(".")
                     if len(msg) > 25:
                         msg = msg[:24] + "…"
                     desc = self._format_desc("", f"{label} [dim]|[/] {msg}")
                 else:
                     desc = self._format_desc("", f"{label} [dim]|[/] checking")
-                # Don't update completed during checking - keeps bar indeterminate
+                # Keep total=None for pulse animation, only update description
                 progress.update(
                     task_id,
                     description=desc,
@@ -284,8 +276,10 @@ class SysUpdateCLI:
                     desc = self._format_desc("", f"{label} [dim]|[/] {pkg}")
                 else:
                     desc = self._format_desc("", f"{label} [dim]|[/] {phase_text}")
+                # Transition to determinate progress: set total and completed
                 progress.update(
                     task_id,
+                    total=100,
                     completed=pct,
                     description=desc,
                     phase=phase_value,
@@ -296,6 +290,7 @@ class SysUpdateCLI:
                 desc = self._format_desc("", label)
                 progress.update(
                     task_id,
+                    total=100,
                     completed=pct,
                     description=desc,
                     phase=phase_value,
@@ -329,7 +324,7 @@ class SysUpdateCLI:
             TextColumn("  "),
             StatusColumn(spinner_name="dots", style="white", use_ascii=self._use_ascii),
             TextColumn("{task.description}"),
-            PhaseAwareBarColumn(bar_width=BAR_WIDTH, style="dim", complete_style="white", finished_style="green"),
+            BarColumn(bar_width=BAR_WIDTH, style="dim", complete_style="white", finished_style="green", pulse_style="cyan"),
             PhaseAwareProgressColumn(),
             TimeElapsedColumn(),
             SpeedColumn(),
@@ -343,7 +338,12 @@ class SysUpdateCLI:
 
             for cfg, is_available in available_updaters:
                 if is_available:
-                    task_id = progress.add_task(self._format_desc("", cfg.label), total=100)
+                    # Start with total=None for indeterminate pulse animation
+                    task_id = progress.add_task(
+                        self._format_desc("", cfg.label),
+                        total=None,
+                        phase="checking",
+                    )
                     coroutines.append(self._run_updater(progress, task_id, cfg))
                     labels.append(cfg.label)
                 else:
@@ -385,8 +385,10 @@ class SysUpdateCLI:
             dry_run=self.dry_run,
         )
 
+        # Ensure we transition to determinate mode and mark complete
         progress.update(
             task_id,
+            total=100,
             completed=100,
             success=result.success,
             description=self._format_desc("", cfg.label)
