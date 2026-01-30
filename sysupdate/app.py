@@ -6,11 +6,12 @@ from typing import Callable, cast
 from rich.console import Console
 from rich.progress import (
     Progress,
+    ProgressColumn,
     SpinnerColumn,
     TextColumn,
     BarColumn,
     TaskProgressColumn,
-    TimeElapsedColumn,
+    Task as RichTask,
 )
 from rich.prompt import Confirm
 from rich.table import Table
@@ -31,14 +32,45 @@ _MARKUP_PATTERN = re.compile(r"\[(green|red|dim|/)\]")
 
 
 class StatusColumn(SpinnerColumn):
-    """Spinner that shows ✓ or ✗ when task completes."""
+    """Status badge with phase-aware colors."""
 
-    def render(self, task):
+    PHASE_STYLES: dict[str, tuple[str, str]] = {
+        "checking": ("dim", "○"),
+        "downloading": ("cyan", "↓"),
+        "installing": ("yellow", "⚙"),
+        "complete": ("green", "✓"),
+        "error": ("red", "✗"),
+    }
+
+    def render(self, task: RichTask) -> Text:
         if task.finished:
             if task.fields.get("success", True):
                 return Text("✓", style="green")
             return Text("✗", style="red")
-        return super().render(task)
+
+        phase = task.fields.get("phase", "checking")
+        style, symbol = self.PHASE_STYLES.get(phase, ("white", "●"))
+        return Text(symbol, style=style)
+
+
+class SpeedColumn(ProgressColumn):
+    """Shows download speed when available."""
+
+    def render(self, task: RichTask) -> Text:
+        speed = task.fields.get("speed", "")
+        if speed:
+            return Text(f"{speed:>10}", style="cyan")
+        return Text(" " * 10, style="dim")
+
+
+class ETAColumn(ProgressColumn):
+    """Shows ETA when available."""
+
+    def render(self, task: RichTask) -> Text:
+        eta = task.fields.get("eta", "")
+        if eta:
+            return Text(f"ETA {eta}", style="dim")
+        return Text("", style="dim")
 
 
 class SysUpdateCLI:
@@ -69,16 +101,37 @@ class SysUpdateCLI:
             return 130
 
     def _print_header(self) -> None:
-        """Print ASCII art header."""
-        logo = r"""
-[bold]                                 _       _       
-   ___ _   _ ___ _   _ _ __   __| | __ _| |_ ___
-  / __| | | / __| | | | '_ \ / _` |/ _` | __/ _ \
-  \__ \ |_| \__ \ |_| | |_) | (_| | (_| | ||  __/
-  |___/\__, |___/\__,_| .__/ \__,_|\__,_|\__\___|
-       |___/          |_|[/]  [dim]v{version}[/]
-"""
-        self.console.print(logo.format(version=__version__))
+        """Print gradient-colored ASCII art header."""
+        # Use regular strings with escaped backslashes to avoid raw string issues
+        lines = [
+            "                                 _       _       ",
+            "   ___ _   _ ___ _   _ _ __   __| | __ _| |_ ___ ",
+            "  / __| | | / __| | | | '_ \\ / _` |/ _` | __/ _ \\",
+            "  \\__ \\ |_| \\__ \\ |_| | |_) | (_| | (_| | ||  __/",
+            "  |___/\\__, |___/\\__,_| .__/ \\__,_|\\__,_|\\__\\___|",
+            "       |___/          |_|                        ",
+        ]
+
+        # Gradient from cyan -> blue -> magenta
+        colors = ["cyan", "dodger_blue2", "blue", "purple", "magenta"]
+
+        self.console.print()
+        for line in lines:
+            text = Text()
+            line_len = len(line)
+            for i, char in enumerate(line):
+                color_idx = int(i / line_len * len(colors))
+                text.append(char, style=f"bold {colors[min(color_idx, len(colors) - 1)]}")
+            self.console.print(text)
+
+        # Version centered under the logo (logo is 50 chars wide)
+        version_str = f"v{__version__}"
+        logo_width = 50
+        padding = (logo_width - len(version_str)) // 2
+        version_text = Text()
+        version_text.append(" " * padding + version_str, style="dim")
+        self.console.print(version_text)
+        self.console.print()
 
     def _format_desc(self, prefix: str, label: str, detail: str = "") -> str:
         """Format description with fixed width (truncate or pad as needed).
@@ -130,6 +183,8 @@ class SysUpdateCLI:
         """
         def on_progress(update: UpdateProgress) -> None:
             pct = int(update.progress * 100)
+            phase_value = update.phase.value if update.phase else "checking"
+
             if update.phase == UpdatePhase.CHECKING:
                 # Show message if available (e.g., "Querying snap store...")
                 if update.message:
@@ -149,7 +204,15 @@ class SysUpdateCLI:
                     desc = self._format_desc("", label, f"[dim]{phase_text}...[/]")
             else:
                 desc = self._format_desc("", label)
-            progress.update(task_id, completed=pct, description=desc)
+
+            progress.update(
+                task_id,
+                completed=pct,
+                description=desc,
+                phase=phase_value,
+                speed=update.speed,
+                eta=update.eta,
+            )
         return on_progress
 
     async def _handle_aria2_warning(self) -> bool:
@@ -283,7 +346,8 @@ class SysUpdateCLI:
             TextColumn("{task.description}"),
             BarColumn(bar_width=16, style="dim", complete_style="white", finished_style="green"),
             TaskProgressColumn(),
-            TimeElapsedColumn(),
+            SpeedColumn(),
+            ETAColumn(),
             console=self.console,
             transient=False,
             expand=False,
@@ -364,6 +428,7 @@ class SysUpdateCLI:
                     elif task_mapping[i] == "pacman":
                         pacman_packages = cast(list[Package], result)
 
+        self.console.print()
         self.console.print()
 
         # Print summary

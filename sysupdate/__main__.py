@@ -10,6 +10,7 @@ from . import __version__
 
 def check_sudo() -> bool:
     """Prompt for sudo password before starting."""
+    print()  # Blank line after command prompt
     print("sysupdate requires sudo access.")
     print("Please enter your password if prompted.\n")
 
