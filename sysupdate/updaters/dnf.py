@@ -76,8 +76,11 @@ class DnfUpdater:
                         new_version=version,
                     ))
 
-        except Exception:
-            pass
+        except FileNotFoundError:
+            return []  # Package manager not installed
+        except Exception as e:
+            if self._logger:
+                self._logger.log(f"Error checking updates: {e}")
 
         return packages
 
@@ -108,8 +111,11 @@ class DnfUpdater:
                     # Match against the full name (with arch suffix) or base name
                     if name in package_names or any(name.startswith(pkg.split('.')[0]) for pkg in package_names):
                         versions[name] = parts[1].strip()
-        except Exception:
-            pass
+        except FileNotFoundError:
+            return {}  # Package manager not installed
+        except Exception as e:
+            if self._logger:
+                self._logger.log(f"Error getting current versions: {e}")
 
         return versions
 

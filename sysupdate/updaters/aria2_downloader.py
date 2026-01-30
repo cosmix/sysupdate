@@ -230,5 +230,5 @@ class Aria2Downloader:
         try:
             partial_path.rename(archive_path)
             return True
-        except Exception:
-            return False
+        except OSError:
+            return False  # Permission denied, file locked, or other OS-level failure

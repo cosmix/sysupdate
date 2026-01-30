@@ -82,8 +82,11 @@ class PacmanUpdater:
                         new_version=simple_match.group(2),
                     ))
 
-        except Exception:
-            pass
+        except FileNotFoundError:
+            return []  # Package manager not installed
+        except Exception as e:
+            if self._logger:
+                self._logger.log(f"Error checking updates: {e}")
 
         return packages
 
@@ -112,8 +115,11 @@ class PacmanUpdater:
                 if len(parts) >= 2:
                     versions[parts[0]] = parts[1]
 
-        except Exception:
-            pass
+        except FileNotFoundError:
+            return {}  # Package manager not installed
+        except Exception as e:
+            if self._logger:
+                self._logger.log(f"Error getting current versions: {e}")
 
         return versions
 
