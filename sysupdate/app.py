@@ -22,6 +22,7 @@ from .updaters.apt import AptUpdater
 from .updaters.flatpak import FlatpakUpdater
 from .updaters.snap import SnapUpdater
 from .updaters.dnf import DnfUpdater
+from .updaters.pacman import PacmanUpdater
 from .updaters.aria2_downloader import Aria2Downloader
 from .utils.logging import setup_logging
 
@@ -55,6 +56,7 @@ class SysUpdateCLI:
         self._flatpak_updater = FlatpakUpdater()
         self._snap_updater = SnapUpdater()
         self._dnf_updater = DnfUpdater()
+        self._pacman_updater = PacmanUpdater()
 
     def run(self) -> int:
         """Run the update process."""
@@ -255,11 +257,12 @@ class SysUpdateCLI:
             return False
 
     async def _run_updates(self) -> int:
-        """Run APT, Flatpak, Snap, and DNF updates concurrently."""
+        """Run APT, Flatpak, Snap, DNF, and Pacman updates concurrently."""
         apt_available = await self._apt_updater.check_available()
         flatpak_available = await self._flatpak_updater.check_available()
         snap_available = await self._snap_updater.check_available()
         dnf_available = await self._dnf_updater.check_available()
+        pacman_available = await self._pacman_updater.check_available()
 
         # Check for aria2c availability
         downloader = Aria2Downloader()
@@ -271,6 +274,7 @@ class SysUpdateCLI:
         flatpak_packages: list[Package] = []
         snap_packages: list[Package] = []
         dnf_packages: list[Package] = []
+        pacman_packages: list[Package] = []
 
         # Run updates with progress display
         with Progress(
@@ -327,6 +331,20 @@ class SysUpdateCLI:
             else:
                 self.console.print("[dim]   DNF not available[/]")
 
+            if pacman_available:
+                pacman_task_id = progress.add_task(
+                    self._format_desc("", "Pacman"),
+                    total=100
+                )
+                coroutines.append(self._run_pacman(progress, pacman_task_id))
+                task_mapping.append("pacman")
+            else:
+                self.console.print("[dim]   Pacman not available[/]")
+
+            # Add spacing between "not available" messages and progress bars
+            if coroutines:
+                self.console.print()
+
             # Run all updates concurrently
             if coroutines:
                 results = await asyncio.gather(*coroutines, return_exceptions=True)
@@ -343,11 +361,13 @@ class SysUpdateCLI:
                         snap_packages = cast(list[Package], result)
                     elif task_mapping[i] == "dnf":
                         dnf_packages = cast(list[Package], result)
+                    elif task_mapping[i] == "pacman":
+                        pacman_packages = cast(list[Package], result)
 
         self.console.print()
 
         # Print summary
-        self._print_summary(apt_packages, flatpak_packages, snap_packages, dnf_packages)
+        self._print_summary(apt_packages, flatpak_packages, snap_packages, dnf_packages, pacman_packages)
 
         return 0
 
@@ -463,19 +483,49 @@ class SysUpdateCLI:
 
         return result.packages
 
+    async def _run_pacman(self, progress: Progress, task_id) -> list[Package]:
+        """Run Pacman update with progress."""
+        on_progress = self._create_progress_callback(
+            progress, task_id, label="Pacman", max_pkg_len=12
+        )
+
+        result = await self._pacman_updater.run_update(
+            callback=on_progress,
+            dry_run=self.dry_run,
+        )
+
+        if result.success:
+            progress.update(
+                task_id,
+                completed=100,
+                success=True,
+                description=self._format_desc("", "Pacman")
+            )
+        else:
+            progress.update(
+                task_id,
+                completed=100,
+                success=False,
+                description=self._format_desc("", "Pacman")
+            )
+
+        return result.packages
+
     def _print_summary(
         self,
         apt_packages: list[Package],
         flatpak_packages: list[Package],
         snap_packages: list[Package],
         dnf_packages: list[Package],
+        pacman_packages: list[Package],
     ) -> None:
         """Print minimal summary of updated packages."""
         apt_count = len(apt_packages)
         flatpak_count = len(flatpak_packages)
         snap_count = len(snap_packages)
         dnf_count = len(dnf_packages)
-        total = apt_count + flatpak_count + snap_count + dnf_count
+        pacman_count = len(pacman_packages)
+        total = apt_count + flatpak_count + snap_count + dnf_count + pacman_count
 
         self.console.print("   [dim]" + "\u2500" * 40 + "[/]")
 
@@ -495,6 +545,8 @@ class SysUpdateCLI:
             parts.append(f"{snap_count} Snap")
         if dnf_count > 0:
             parts.append(f"{dnf_count} DNF")
+        if pacman_count > 0:
+            parts.append(f"{pacman_count} Pacman")
 
         self.console.print()
         self.console.print(f"   [green]\u2713[/] Updated [bold]{total}[/] packages ({', '.join(parts)})")
@@ -591,6 +643,30 @@ class SysUpdateCLI:
                 dnf_table.add_row(pkg.name, old_ver, "\u2192", new_ver)
 
             self.console.print(dnf_table)
+            self.console.print()
+
+        # Pacman Packages Table
+        if pacman_packages:
+            self.console.print(f"   [bold]Pacman Packages[/] [dim]({pacman_count})[/]")
+            self.console.print()
+            pacman_table = Table(
+                show_header=True,
+                header_style="dim",
+                box=None,
+                padding=(0, 3),
+                collapse_padding=True,
+            )
+            pacman_table.add_column("Package", style="white")
+            pacman_table.add_column("Old", style="dim", justify="right")
+            pacman_table.add_column("", style="dim", justify="center", width=3)
+            pacman_table.add_column("New", style="white", justify="left")
+
+            for pkg in pacman_packages:
+                old_ver = pkg.old_version if pkg.old_version else "-"
+                new_ver = pkg.new_version if pkg.new_version else "-"
+                pacman_table.add_row(pkg.name, old_ver, "\u2192", new_ver)
+
+            self.console.print(pacman_table)
             self.console.print()
 
         self.console.print("   [dim]" + "\u2500" * 40 + "[/]")

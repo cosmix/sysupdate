@@ -7,6 +7,7 @@ from sysupdate.updaters.base import Package, UpdateProgress, UpdateResult, Updat
 from sysupdate.updaters.apt import AptUpdater
 from sysupdate.updaters.flatpak import FlatpakUpdater
 from sysupdate.updaters.snap import SnapUpdater
+from sysupdate.updaters.pacman import PacmanUpdater
 
 
 class TestPackage:
@@ -372,3 +373,140 @@ firefox   125.0.1    4432   279MB   mozilla     -
 
             packages = await updater.check_updates()
             assert len(packages) == 0
+
+
+class TestPacmanUpdater:
+    """Tests for PacmanUpdater."""
+
+    @pytest.fixture
+    def updater(self):
+        """Create a PacmanUpdater instance."""
+        return PacmanUpdater()
+
+    @pytest.mark.asyncio
+    async def test_check_available_true(self, updater):
+        """Test check_available when pacman exists."""
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
+            mock_proc = AsyncMock()
+            mock_proc.returncode = 0
+            mock_proc.wait = AsyncMock()
+            mock_exec.return_value = mock_proc
+
+            result = await updater.check_available()
+            assert result is True
+
+    @pytest.mark.asyncio
+    async def test_check_available_false(self, updater):
+        """Test check_available when pacman doesn't exist."""
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
+            mock_proc = AsyncMock()
+            mock_proc.returncode = 1
+            mock_proc.wait = AsyncMock()
+            mock_exec.return_value = mock_proc
+
+            result = await updater.check_available()
+            assert result is False
+
+    @pytest.mark.asyncio
+    async def test_check_updates_checkupdates_format(self, updater):
+        """Test check_updates parses checkupdates output format."""
+        checkupdates_output = b"""linux 6.7.0-1 -> 6.7.1-1
+firefox 122.0-1 -> 122.0.1-1
+python 3.11.7-1 -> 3.11.8-1
+"""
+        with patch("sysupdate.updaters.pacman.command_available") as mock_avail:
+            mock_avail.return_value = True  # checkupdates is available
+
+            with patch("asyncio.create_subprocess_exec") as mock_exec:
+                mock_proc = AsyncMock()
+                mock_proc.returncode = 0
+                mock_proc.communicate = AsyncMock(return_value=(checkupdates_output, b""))
+                mock_exec.return_value = mock_proc
+
+                packages = await updater.check_updates()
+
+                assert len(packages) == 3
+                linux_pkg = next(p for p in packages if p.name == "linux")
+                assert linux_pkg.old_version == "6.7.0-1"
+                assert linux_pkg.new_version == "6.7.1-1"
+
+    @pytest.mark.asyncio
+    async def test_check_updates_pacman_qu_format(self, updater):
+        """Test check_updates parses pacman -Qu output format."""
+        pacman_output = b"""linux 6.7.1-1
+firefox 122.0.1-1
+"""
+        with patch("sysupdate.updaters.pacman.command_available") as mock_avail:
+            mock_avail.return_value = False  # checkupdates not available
+
+            with patch("asyncio.create_subprocess_exec") as mock_exec:
+                mock_proc = AsyncMock()
+                mock_proc.returncode = 0
+                mock_proc.communicate = AsyncMock(return_value=(pacman_output, b""))
+                mock_exec.return_value = mock_proc
+
+                packages = await updater.check_updates()
+
+                assert len(packages) == 2
+                assert any(p.name == "linux" and p.new_version == "6.7.1-1" for p in packages)
+
+    @pytest.mark.asyncio
+    async def test_check_updates_empty(self, updater):
+        """Test handling when no updates are available."""
+        with patch("sysupdate.updaters.pacman.command_available") as mock_avail:
+            mock_avail.return_value = True
+
+            with patch("asyncio.create_subprocess_exec") as mock_exec:
+                mock_proc = AsyncMock()
+                mock_proc.returncode = 2  # checkupdates returns 2 when no updates
+                mock_proc.communicate = AsyncMock(return_value=(b"", b""))
+                mock_exec.return_value = mock_proc
+
+                packages = await updater.check_updates()
+                assert len(packages) == 0
+
+    @pytest.mark.asyncio
+    async def test_dry_run_mode(self, updater):
+        """Test dry run doesn't actually update."""
+        checkupdates_output = b"firefox 122.0-1 -> 122.0.1-1\n"
+
+        progress_updates = []
+
+        def track_progress(progress: UpdateProgress):
+            progress_updates.append(progress)
+
+        with patch("sysupdate.updaters.pacman.command_available") as mock_avail:
+            mock_avail.return_value = True
+
+            with patch("asyncio.create_subprocess_exec") as mock_exec:
+                mock_proc = AsyncMock()
+                mock_proc.returncode = 0
+                mock_proc.communicate = AsyncMock(return_value=(checkupdates_output, b""))
+                mock_exec.return_value = mock_proc
+
+                with patch.object(updater, "_logger", MagicMock()):
+                    result = await updater.run_update(callback=track_progress, dry_run=True)
+
+                assert result.success is True
+                assert any(p.phase == UpdatePhase.COMPLETE for p in progress_updates)
+
+    @pytest.mark.asyncio
+    async def test_get_current_versions(self, updater):
+        """Test _get_current_versions parses pacman -Q output."""
+        pacman_q_output = b"""linux 6.7.0-1
+firefox 122.0-1
+"""
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
+            mock_proc = AsyncMock()
+            mock_proc.returncode = 0
+            mock_proc.communicate = AsyncMock(return_value=(pacman_q_output, b""))
+            mock_exec.return_value = mock_proc
+
+            versions = await updater._get_current_versions(["linux", "firefox"])
+
+            assert versions["linux"] == "6.7.0-1"
+            assert versions["firefox"] == "122.0-1"
+
+    def test_name_attribute(self, updater):
+        """Test that the updater has correct name."""
+        assert updater.name == "Pacman Packages"

@@ -5,5 +5,6 @@ from .apt import AptUpdater
 from .flatpak import FlatpakUpdater
 from .snap import SnapUpdater
 from .dnf import DnfUpdater
+from .pacman import PacmanUpdater
 
-__all__ = ["Package", "UpdateResult", "UpdaterProtocol", "AptUpdater", "FlatpakUpdater", "SnapUpdater", "DnfUpdater"]
+__all__ = ["Package", "UpdateResult", "UpdaterProtocol", "AptUpdater", "FlatpakUpdater", "SnapUpdater", "DnfUpdater", "PacmanUpdater"]
