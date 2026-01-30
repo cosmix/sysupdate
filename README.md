@@ -1,13 +1,24 @@
 # sysupdate
 
-A fast, beautiful CLI for managing system updates on Ubuntu/Debian. Runs APT, Flatpak, and Snap updates concurrently with real-time progress tracking.
+A fast, beautiful CLI for managing system updates on Linux. Runs package manager updates concurrently with real-time progress tracking.
 
 ![Python](https://img.shields.io/badge/python-3.11+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
+## Supported Package Managers
+
+| Package Manager | Distribution                         |
+| --------------- | ------------------------------------ |
+| APT             | Debian, Ubuntu, Linux Mint, Pop!\_OS |
+| DNF             | Fedora, RHEL, CentOS, Rocky Linux    |
+| Pacman          | Arch Linux, Manjaro, EndeavourOS     |
+| Flatpak         | All distributions                    |
+| Snap            | All distributions                    |
+
 ## Features
 
-- **Concurrent Updates**: APT, Flatpak, and Snap run in parallel
+- **Concurrent Updates**: All available package managers run in parallel
+- **Multi-Distro Support**: Works on Debian, Fedora, Arch-based systems and more
 - **Parallel Downloads**: Uses aria2c for faster APT package downloads (optional)
 - **Real-time Progress**: Live progress bars with package names and speed
 - **Self-Update**: Built-in command to update sysupdate itself from GitHub Releases
@@ -60,13 +71,13 @@ sysupdate self-update
 
 ### Example Output
 
-```
+```text
                                  _       _
    ___ _   _ ___ _   _ _ __   __| | __ _| |_ ___
   / __| | | / __| | | | '_ \ / _` |/ _` | __/ _ \
   \__ \ |_| \__ \ |_| | |_) | (_| | (_| | ||  __/
   |___/\__, |___/\__,_| .__/ \__,_|\__,_|\__\___|
-       |___/          |_|  v2.0.0
+       |___/          |_|
 
   ✓ APT                     ━━━━━━━━━━━━━━━━ 100% 0:00:42
   ✓ Flatpak                 ━━━━━━━━━━━━━━━━ 100% 0:00:15
@@ -85,22 +96,27 @@ sysupdate self-update
    ... and 7 more
 ```
 
+_On Fedora, APT is replaced with DNF. On Arch, it's replaced with Pacman._
+
 ## Requirements
 
 - Python 3.11+
-- Ubuntu/Debian-based Linux
+- Linux (Debian/Ubuntu, Fedora/RHEL, Arch, or derivatives)
 - `sudo` privileges
+- At least one supported package manager (APT, DNF, or Pacman)
 - `flatpak` (optional)
 - `snap` (optional)
-- `aria2` (optional, for parallel downloads)
+- `aria2` (optional, for parallel APT downloads)
 
 ## Log Files
 
 Logs are saved to `/tmp/update_logs/`:
 
-```
+```text
 sysupdate_YYYYMMDD_HHMMSS_main.log
-sysupdate_YYYYMMDD_HHMMSS_apt.log
+sysupdate_YYYYMMDD_HHMMSS_apt.log      # Debian/Ubuntu
+sysupdate_YYYYMMDD_HHMMSS_dnf.log      # Fedora/RHEL
+sysupdate_YYYYMMDD_HHMMSS_pacman.log   # Arch
 sysupdate_YYYYMMDD_HHMMSS_flatpak.log
 sysupdate_YYYYMMDD_HHMMSS_snap.log
 ```
