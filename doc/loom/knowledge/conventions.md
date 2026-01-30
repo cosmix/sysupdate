@@ -156,3 +156,28 @@ Error Handling Patterns:
 - HTTP errors: Mock response.status codes (404, 500)
 - File not found: pytest.raises(FileNotFoundError) pattern
 - RuntimeError for unsupported architecture: Verify exception message content
+
+## Hardcoded Constants in app.py
+
+Display Constants:
+- DESC_WIDTH = 24 (line 91): Fixed description column width
+- bar_width = 16 (line 253): Progress bar width
+- logo_width = 50 (line 141): ASCII art centering width
+- max_pkg_len = 12: Default max package name length
+
+### Phase Style Mapping (PHASE_STYLES, lines 47-53)
+
+- checking: dim, ○
+- downloading: cyan, ↓
+- installing: yellow, ⚙
+- complete: green, ✓
+- error: red, ✗
+
+Header Gradient: cyan → dodger_blue2 → blue → purple → magenta
+
+### Truncation Limits
+
+- Message truncation in CHECKING phase: 15 chars (lines 205-206)
+- Description total width: DESC_WIDTH (24 chars)
+- Package name display: max_pkg_len per updater config
+- Markup pattern: r'\[(green|red|dim|/)\]' for stripping Rich tags

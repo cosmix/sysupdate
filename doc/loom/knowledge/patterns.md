@@ -148,3 +148,20 @@ Output format: `package.arch    version    repository`
 - 'Installing:' or 'Upgrading:' → INSTALLING phase
 - '(\d+)/(\d+):' pattern for individual package progress
 - 'Complete!' for completion detection
+
+## Rich Progress Bar Integration
+
+Custom progress columns in app.py:
+- StatusColumn (44-63): Phase-aware spinner with color mapping
+- SpeedColumn (66-73): Right-aligned download speed (10 chars)
+- ETAColumn (76-83): ETA display when available
+- Custom task fields: phase, speed, eta, success
+
+### Progress Column Configuration (app.py:249-261)
+
+- TextColumn for spacing/description
+- StatusColumn with dots spinner style
+- BarColumn(bar_width=16, style=dim, complete_style=white)
+- TaskProgressColumn for percentage display
+- TimeElapsedColumn for elapsed time
+- Custom SpeedColumn and ETAColumn appended
