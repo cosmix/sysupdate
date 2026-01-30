@@ -9,6 +9,8 @@ import pytest
 from sysupdate.selfupdate.binary import (
     get_architecture,
     get_expected_asset_name,
+    replace_binary,
+    can_write_to_path,
 )
 from sysupdate.selfupdate.checksum import (
     compute_sha256,
@@ -527,3 +529,147 @@ class TestGitHubClient:
             async with GitHubClient() as client:
                 with pytest.raises(aiohttp.ClientError):
                     await client.download_text("https://example.com/text")
+
+
+class TestBinaryReplacement:
+    """E2E tests for binary replacement functionality."""
+
+    @pytest.mark.asyncio
+    async def test_replace_binary_same_filesystem(self, tmp_path):
+        """Test replacing binary when both files are on same filesystem."""
+        # Create "current" binary
+        current_binary = tmp_path / "sysupdate"
+        current_binary.write_bytes(b"old binary content version 1.0")
+        current_binary.chmod(0o755)
+        original_content = current_binary.read_bytes()
+
+        # Create "new" binary in same tmp_path (same filesystem)
+        new_binary = tmp_path / "new" / "sysupdate-linux-x86_64"
+        new_binary.parent.mkdir(parents=True)
+        new_binary.write_bytes(b"new binary content version 2.0 - updated!")
+        new_content = new_binary.read_bytes()
+
+        # Perform replacement
+        success, error = await replace_binary(current_binary, new_binary)
+
+        assert success, f"Replacement failed: {error}"
+        assert error == ""
+        assert current_binary.exists()
+        assert current_binary.read_bytes() == new_content
+        assert not new_binary.exists()  # Should be moved, not copied
+        # Backup should be cleaned up
+        assert not current_binary.with_suffix(".bak").exists()
+
+    @pytest.mark.asyncio
+    async def test_replace_binary_cross_filesystem(self, tmp_path):
+        """Test replacing binary when new binary is in /tmp (potentially different fs)."""
+        import tempfile
+
+        # Create "current" binary in tmp_path
+        current_binary = tmp_path / "sysupdate"
+        current_binary.write_bytes(b"old binary content version 1.0")
+        current_binary.chmod(0o755)
+
+        # Create "new" binary in system /tmp (may be different filesystem)
+        with tempfile.TemporaryDirectory() as system_tmp:
+            new_binary = Path(system_tmp) / "sysupdate-linux-x86_64"
+            new_binary.write_bytes(b"new binary content version 2.0 - cross fs!")
+            new_content = new_binary.read_bytes()
+
+            # Perform replacement
+            success, error = await replace_binary(current_binary, new_binary)
+
+            assert success, f"Replacement failed: {error}"
+            assert error == ""
+            assert current_binary.exists()
+            assert current_binary.read_bytes() == new_content
+
+    @pytest.mark.asyncio
+    async def test_replace_binary_preserves_executable(self, tmp_path):
+        """Test that replaced binary remains executable."""
+        current_binary = tmp_path / "sysupdate"
+        current_binary.write_bytes(b"old")
+        current_binary.chmod(0o755)
+
+        new_binary = tmp_path / "new_binary"
+        new_binary.write_bytes(b"new")
+
+        success, error = await replace_binary(current_binary, new_binary)
+
+        assert success, f"Replacement failed: {error}"
+        # Check executable bit is set
+        mode = current_binary.stat().st_mode
+        assert mode & 0o111, "Binary should be executable"
+
+    @pytest.mark.asyncio
+    async def test_replace_binary_restores_on_failure(self, tmp_path):
+        """Test that original binary is restored if new binary doesn't exist."""
+        current_binary = tmp_path / "sysupdate"
+        current_binary.write_bytes(b"original content")
+        current_binary.chmod(0o755)
+        original_content = current_binary.read_bytes()
+
+        # Non-existent new binary
+        new_binary = tmp_path / "does_not_exist"
+
+        success, error = await replace_binary(current_binary, new_binary)
+
+        assert not success
+        assert "does not exist" in error
+        # Original should still be there
+        assert current_binary.exists()
+        assert current_binary.read_bytes() == original_content
+
+    @pytest.mark.asyncio
+    async def test_replace_binary_with_different_sizes(self, tmp_path):
+        """Test replacement works correctly with different file sizes."""
+        current_binary = tmp_path / "sysupdate"
+        # Small original
+        current_binary.write_bytes(b"small")
+        current_binary.chmod(0o755)
+
+        new_binary = tmp_path / "new_binary"
+        # Much larger new binary (simulating real PyApp binary)
+        new_binary.write_bytes(b"x" * 10000)
+        new_content = new_binary.read_bytes()
+
+        success, error = await replace_binary(current_binary, new_binary)
+
+        assert success, f"Replacement failed: {error}"
+        assert current_binary.read_bytes() == new_content
+        assert current_binary.stat().st_size == 10000
+
+    @pytest.mark.asyncio
+    async def test_replace_binary_backup_cleanup(self, tmp_path):
+        """Test that backup file is properly cleaned up after successful replacement."""
+        current_binary = tmp_path / "sysupdate"
+        current_binary.write_bytes(b"old")
+        current_binary.chmod(0o755)
+        backup_path = current_binary.with_suffix(".bak")
+
+        new_binary = tmp_path / "new_binary"
+        new_binary.write_bytes(b"new")
+
+        # Ensure no pre-existing backup
+        assert not backup_path.exists()
+
+        success, error = await replace_binary(current_binary, new_binary)
+
+        assert success, f"Replacement failed: {error}"
+        # Backup should be removed
+        assert not backup_path.exists()
+
+    def test_can_write_to_path_writable(self, tmp_path):
+        """Test can_write_to_path returns True for writable paths."""
+        test_file = tmp_path / "test"
+        test_file.write_text("test")
+
+        assert can_write_to_path(test_file) is True
+        assert can_write_to_path(tmp_path) is True
+
+    def test_can_write_to_path_nonexistent_checks_parent(self, tmp_path):
+        """Test can_write_to_path checks parent for nonexistent files."""
+        nonexistent = tmp_path / "does_not_exist"
+
+        # Parent (tmp_path) is writable, so this should return True
+        assert can_write_to_path(nonexistent) is True
