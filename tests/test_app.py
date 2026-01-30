@@ -254,6 +254,149 @@ class TestCLIIntegration:
             assert call_args.kwargs['dry_run'] is True
 
 
+class TestDryRunIndicator:
+    """Tests for dry-run mode indicator display."""
+
+    def test_dry_run_indicator_shown_in_header(self):
+        """Test that dry-run mode shows indicator in header."""
+        with patch('sysupdate.app.setup_logging'):
+            cli = SysUpdateCLI(dry_run=True)
+
+            with patch.object(cli.console, 'print') as mock_print:
+                cli._print_header()
+
+                # Check that DRY RUN indicator was printed
+                calls_str = str(mock_print.call_args_list)
+                assert 'DRY RUN' in calls_str
+
+    def test_dry_run_indicator_not_shown_when_false(self):
+        """Test that dry-run indicator is not shown in normal mode."""
+        with patch('sysupdate.app.setup_logging'):
+            cli = SysUpdateCLI(dry_run=False)
+
+            with patch.object(cli.console, 'print') as mock_print:
+                cli._print_header()
+
+                # Check that DRY RUN indicator was NOT printed
+                calls_str = str(mock_print.call_args_list)
+                assert 'DRY RUN' not in calls_str
+
+
+class TestASCIIFallback:
+    """Tests for ASCII fallback mode when Unicode is not supported."""
+
+    def test_supports_unicode_with_utf8(self):
+        """Test that UTF-8 encoding is detected as Unicode-capable."""
+        with patch('sysupdate.app.setup_logging'):
+            cli = SysUpdateCLI()
+
+            # Mock console with UTF-8 encoding
+            cli.console._encoding = 'utf-8'
+            with patch.object(cli.console, '_encoding', 'utf-8'):
+                # Re-check unicode support (manually test the method)
+                assert cli._supports_unicode() is True
+
+    def test_supports_unicode_with_ascii(self):
+        """Test that ASCII encoding triggers fallback mode."""
+        with patch('sysupdate.app.setup_logging'):
+            cli = SysUpdateCLI()
+
+            # Mock console with ASCII encoding using PropertyMock
+            with patch.object(type(cli.console), 'encoding', new_callable=lambda: property(lambda self: 'ascii')):
+                result = cli._supports_unicode()
+                assert result is False
+
+    def test_supports_unicode_with_none(self):
+        """Test that None encoding triggers fallback mode."""
+        with patch('sysupdate.app.setup_logging'):
+            cli = SysUpdateCLI()
+
+            # Mock console with None encoding using PropertyMock
+            with patch.object(type(cli.console), 'encoding', new_callable=lambda: property(lambda self: None)):
+                result = cli._supports_unicode()
+                assert result is False
+
+    def test_ascii_mode_uses_ascii_symbols_in_summary(self):
+        """Test that ASCII fallback uses plain text symbols in summary."""
+        with patch('sysupdate.app.setup_logging'):
+            cli = SysUpdateCLI()
+            cli._use_ascii = True
+
+            apt_packages = [
+                Package(name="pkg1", old_version="1.0", new_version="2.0"),
+            ]
+            results = {"APT": apt_packages, "Flatpak": [], "Snap": [], "DNF": [], "Pacman": []}
+
+            with patch.object(cli.console, 'print') as mock_print:
+                cli._print_summary(results)
+
+                # ASCII mode should use '-' for line and '+' for checkmark
+                calls_str = str(mock_print.call_args_list)
+                # Should have ASCII arrow '->' for version changes
+                assert '->' in calls_str or '+' in calls_str
+
+
+class TestExitCodes:
+    """Tests for exit code behavior."""
+
+    @pytest.mark.asyncio
+    async def test_exit_code_zero_on_success(self):
+        """Test that successful updates return exit code 0."""
+        with patch('sysupdate.app.setup_logging'), \
+             patch('sysupdate.app.Aria2Downloader') as mock_aria2:
+            mock_aria2.return_value.check_available = AsyncMock(return_value=True)
+
+            cli = SysUpdateCLI()
+
+            for cfg in cli._updaters:
+                if cfg.label == "APT":
+                    cfg.updater.check_available = AsyncMock(return_value=True)
+                    cfg.updater.run_update = AsyncMock(
+                        return_value=UpdateResult(success=True, packages=[])
+                    )
+                else:
+                    cfg.updater.check_available = AsyncMock(return_value=False)
+
+            result = await cli._run_updates()
+
+            assert result == 0
+
+    @pytest.mark.asyncio
+    async def test_exit_code_one_on_updater_failure(self):
+        """Test that failed update returns exit code 1."""
+        with patch('sysupdate.app.setup_logging'), \
+             patch('sysupdate.app.Aria2Downloader') as mock_aria2:
+            mock_aria2.return_value.check_available = AsyncMock(return_value=True)
+
+            cli = SysUpdateCLI()
+
+            for cfg in cli._updaters:
+                if cfg.label == "APT":
+                    cfg.updater.check_available = AsyncMock(return_value=True)
+                    cfg.updater.run_update = AsyncMock(
+                        return_value=UpdateResult(success=False, error_message="Update failed")
+                    )
+                else:
+                    cfg.updater.check_available = AsyncMock(return_value=False)
+
+            result = await cli._run_updates()
+
+            assert result == 1
+
+    def test_exit_code_130_on_keyboard_interrupt(self):
+        """Test that keyboard interrupt returns exit code 130."""
+        def mock_asyncio_run(coro):
+            coro.close()
+            raise KeyboardInterrupt
+
+        with patch('sysupdate.app.setup_logging'), \
+             patch('sysupdate.app.asyncio.run', side_effect=mock_asyncio_run):
+            cli = SysUpdateCLI()
+            result = cli.run()
+
+            assert result == 130
+
+
 class TestPrintSummary:
     """Tests for summary output."""
 
