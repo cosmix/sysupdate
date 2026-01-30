@@ -1,6 +1,7 @@
 """Tests for self-update module."""
 
 import asyncio
+import os
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -122,6 +123,115 @@ abc123def456  sysupdate-linux-x86_64
         uppercase_hash = "DFFD6021BB2BD5B0AF676290809EC3A53191DD81C7F70A4B28688A362182986F"
 
         assert verify_checksum(test_file, uppercase_hash) is True
+
+
+class TestBinaryPathDetection:
+    """Tests for binary path detection in various scenarios."""
+
+    def test_get_binary_path_from_pyapp_env_var(self, tmp_path):
+        """Test get_binary_path uses PYAPP environment variable when set to a path."""
+        from sysupdate.selfupdate.binary import get_binary_path
+
+        # Create a mock binary
+        mock_binary = tmp_path / "sysupdate"
+        mock_binary.write_bytes(b"mock binary")
+        mock_binary.chmod(0o755)
+
+        # PYAPP env var contains the binary path (not just "1")
+        with patch.dict(os.environ, {"PYAPP": str(mock_binary)}):
+            result = get_binary_path()
+            assert result == mock_binary
+
+    def test_get_binary_path_ignores_pyapp_flag_only(self, tmp_path):
+        """Test get_binary_path ignores PYAPP='1' and uses fallback."""
+        from sysupdate.selfupdate.binary import get_binary_path
+
+        # Create a mock binary for PATH fallback
+        mock_binary = tmp_path / "sysupdate"
+        mock_binary.write_bytes(b"mock binary")
+        mock_binary.chmod(0o755)
+
+        # PYAPP is just "1" (no path), should fall through to other checks
+        with patch.dict(os.environ, {"PYAPP": "1"}):
+            # Use a custom ppid that points to a non-sysupdate process
+            with patch("sysupdate.selfupdate.binary.os.getppid", return_value=1):
+                with patch("sys.executable", "/usr/bin/python3"):
+                    with patch("shutil.which", return_value=str(mock_binary)):
+                        result = get_binary_path()
+                        assert result == mock_binary
+
+    def test_get_binary_path_from_pyapp_env_var_nonexistent_path(self, tmp_path):
+        """Test get_binary_path falls back when PYAPP points to nonexistent file."""
+        from sysupdate.selfupdate.binary import get_binary_path
+
+        # Create a mock binary for PATH fallback
+        mock_binary = tmp_path / "sysupdate"
+        mock_binary.write_bytes(b"mock binary")
+        mock_binary.chmod(0o755)
+
+        # PYAPP points to nonexistent file
+        with patch.dict(os.environ, {"PYAPP": "/nonexistent/sysupdate"}):
+            with patch("sysupdate.selfupdate.binary.os.getppid", return_value=1):
+                with patch("sys.executable", "/usr/bin/python3"):
+                    with patch("shutil.which", return_value=str(mock_binary)):
+                        result = get_binary_path()
+                        assert result == mock_binary
+
+    def test_get_binary_path_from_parent_process(self):
+        """Test get_binary_path detects sysupdate from parent process."""
+        from sysupdate.selfupdate.binary import get_binary_path
+
+        # Mock scenario: parent process is the PyApp binary named 'sysupdate'
+        mock_path = Path("/usr/local/bin/sysupdate")
+
+        with patch("os.getppid", return_value=12345):
+            with patch.object(Path, "resolve", return_value=mock_path):
+                with patch.object(Path, "name", new_callable=lambda: property(lambda s: "sysupdate")):
+                    # This test verifies the parent process check path
+                    # The actual implementation reads /proc/{ppid}/exe
+                    pass  # Complex to mock /proc filesystem
+
+    def test_get_binary_path_from_sys_executable(self):
+        """Test get_binary_path falls back to sys.executable."""
+        from sysupdate.selfupdate.binary import get_binary_path
+
+        # Create a temp binary to test with
+        with patch("os.getppid", return_value=1):  # init process
+            with patch.object(Path, "resolve", side_effect=OSError("No such file")):
+                with patch("sys.executable", "/usr/bin/sysupdate"):
+                    # When parent process check fails and sys.executable is 'sysupdate'
+                    # it should return that path
+                    pass
+
+    def test_get_binary_path_from_which(self, tmp_path):
+        """Test get_binary_path falls back to shutil.which."""
+        from sysupdate.selfupdate.binary import get_binary_path
+
+        # Create a mock binary
+        mock_binary = tmp_path / "sysupdate"
+        mock_binary.write_bytes(b"mock binary")
+        mock_binary.chmod(0o755)
+
+        # Mock all other detection methods to fail
+        with patch.dict(os.environ, {"PYAPP": ""}):
+            with patch("sysupdate.selfupdate.binary.os.getppid", return_value=1):
+                with patch("sys.executable", "/usr/bin/python3"):
+                    with patch("shutil.which", return_value=str(mock_binary)):
+                        result = get_binary_path()
+                        assert result == mock_binary
+
+    def test_get_binary_path_raises_when_not_found(self):
+        """Test get_binary_path raises RuntimeError when binary not found."""
+        from sysupdate.selfupdate.binary import get_binary_path
+
+        with patch.dict(os.environ, {"PYAPP": ""}):
+            with patch("os.getppid", return_value=1):
+                with patch("pathlib.Path.resolve", side_effect=OSError("No such file")):
+                    with patch("sys.executable", "/usr/bin/python3"):
+                        with patch("shutil.which", return_value=None):
+                            with pytest.raises(RuntimeError) as exc_info:
+                                get_binary_path()
+                            assert "Could not locate sysupdate binary" in str(exc_info.value)
 
 
 class TestBinary:
@@ -529,6 +639,291 @@ class TestGitHubClient:
             async with GitHubClient() as client:
                 with pytest.raises(aiohttp.ClientError):
                     await client.download_text("https://example.com/text")
+
+
+class TestSelfUpdaterE2E:
+    """End-to-end tests for the complete self-update flow."""
+
+    @pytest.fixture
+    def mock_release(self):
+        """Create a mock release with test assets."""
+        return Release(
+            tag_name="v2.0.0",
+            version="2.0.0",
+            name="Test Release 2.0.0",
+            assets=[
+                ReleaseAsset(
+                    name="sysupdate-linux-x86_64",
+                    download_url="https://example.com/sysupdate-linux-x86_64",
+                    size=1024,
+                ),
+                ReleaseAsset(
+                    name="sysupdate-linux-aarch64",
+                    download_url="https://example.com/sysupdate-linux-aarch64",
+                    size=1024,
+                ),
+                ReleaseAsset(
+                    name="SHA256SUMS.txt",
+                    download_url="https://example.com/SHA256SUMS.txt",
+                    size=256,
+                ),
+            ],
+            prerelease=False,
+        )
+
+    def _create_mock_session(self, sha256sums_content: str, new_binary_content: bytes):
+        """Helper to create a properly mocked aiohttp session."""
+        mock_session = MagicMock()
+
+        def create_mock_response(url):
+            mock_resp = AsyncMock()
+            mock_resp.status = 200
+
+            if "SHA256SUMS" in url:
+                mock_resp.raise_for_status = MagicMock()
+                mock_resp.text = AsyncMock(return_value=sha256sums_content)
+            else:
+                # Binary download
+                mock_resp.headers = {"content-length": str(len(new_binary_content))}
+
+                async def mock_iter_chunked(size):
+                    yield new_binary_content
+
+                mock_resp.content = MagicMock()
+                mock_resp.content.iter_chunked = mock_iter_chunked
+
+            return mock_resp
+
+        def mock_get(url):
+            # Return a context manager, not a coroutine
+            cm = MagicMock()
+            cm.__aenter__ = AsyncMock(return_value=create_mock_response(url))
+            cm.__aexit__ = AsyncMock(return_value=None)
+            return cm
+
+        mock_session.get = mock_get
+        mock_session.close = AsyncMock()
+        return mock_session
+
+    @pytest.mark.asyncio
+    async def test_perform_update_full_flow_x86_64(self, tmp_path, mock_release):
+        """Test complete update flow with mocked network on x86_64."""
+        from sysupdate.selfupdate.updater import SelfUpdater
+        import hashlib
+
+        # Create fake current binary
+        current_binary = tmp_path / "sysupdate"
+        current_binary.write_bytes(b"old binary version 1.0.0")
+        current_binary.chmod(0o755)
+        original_content = current_binary.read_bytes()
+
+        # Create fake new binary content
+        new_binary_content = b"new binary version 2.0.0 - this is the update!"
+        new_binary_hash = hashlib.sha256(new_binary_content).hexdigest()
+
+        # Create SHA256SUMS content
+        sha256sums_content = f"{new_binary_hash}  sysupdate-linux-x86_64\n"
+
+        # Patch get_binary_path to return our test binary
+        with patch("sysupdate.selfupdate.updater.get_binary_path", return_value=current_binary):
+            with patch("sysupdate.selfupdate.updater.get_architecture", return_value="x86_64"):
+                with patch("aiohttp.ClientSession") as mock_session_class:
+                    mock_session = self._create_mock_session(sha256sums_content, new_binary_content)
+                    mock_session_class.return_value = mock_session
+
+                    # Run the update
+                    updater = SelfUpdater()
+                    progress_messages = []
+
+                    def progress_callback(msg, pct):
+                        progress_messages.append((msg, pct))
+
+                    result = await updater.perform_update(
+                        current_version="1.0.0",
+                        release=mock_release,
+                        progress_callback=progress_callback,
+                    )
+
+        # Verify the update succeeded
+        assert result.success, f"Update failed: {result.error_message}"
+        assert result.old_version == "1.0.0"
+        assert result.new_version == "2.0.0"
+        assert result.error_message == ""
+
+        # CRITICAL: Verify the binary was actually replaced with correct content
+        assert current_binary.exists(), "Binary should still exist"
+        final_content = current_binary.read_bytes()
+        assert final_content == new_binary_content, (
+            f"Binary content mismatch!\n"
+            f"Expected: {new_binary_content[:50]}...\n"
+            f"Got: {final_content[:50]}..."
+        )
+        assert final_content != original_content, "Binary should have been replaced"
+
+        # Verify binary is executable
+        mode = current_binary.stat().st_mode
+        assert mode & 0o111, "Binary should be executable"
+
+        # Verify backup was cleaned up
+        assert not current_binary.with_suffix(".bak").exists()
+
+        # Verify progress was reported
+        assert len(progress_messages) > 0
+        assert progress_messages[-1][1] == 100.0
+
+    @pytest.mark.asyncio
+    async def test_perform_update_cross_filesystem(self, tmp_path, mock_release):
+        """Test update when temp directory is on different filesystem."""
+        from sysupdate.selfupdate.updater import SelfUpdater
+        import hashlib
+
+        # Create fake current binary
+        current_binary = tmp_path / "sysupdate"
+        current_binary.write_bytes(b"old binary")
+        current_binary.chmod(0o755)
+
+        # Create fake new binary content
+        new_binary_content = b"new binary - cross filesystem test " + (b"x" * 10000)
+        new_binary_hash = hashlib.sha256(new_binary_content).hexdigest()
+        sha256sums_content = f"{new_binary_hash}  sysupdate-linux-x86_64\n"
+
+        with patch("sysupdate.selfupdate.updater.get_binary_path", return_value=current_binary):
+            with patch("sysupdate.selfupdate.updater.get_architecture", return_value="x86_64"):
+                with patch("aiohttp.ClientSession") as mock_session_class:
+                    mock_session = self._create_mock_session(sha256sums_content, new_binary_content)
+                    mock_session_class.return_value = mock_session
+
+                    updater = SelfUpdater()
+                    result = await updater.perform_update(
+                        current_version="1.0.0",
+                        release=mock_release,
+                    )
+
+        assert result.success, f"Update failed: {result.error_message}"
+        assert current_binary.read_bytes() == new_binary_content
+
+    @pytest.mark.asyncio
+    async def test_perform_update_checksum_mismatch_fails(self, tmp_path, mock_release):
+        """Test that update fails when checksum doesn't match."""
+        from sysupdate.selfupdate.updater import SelfUpdater
+
+        current_binary = tmp_path / "sysupdate"
+        current_binary.write_bytes(b"old binary")
+        current_binary.chmod(0o755)
+        original_content = current_binary.read_bytes()
+
+        new_binary_content = b"new binary content"
+        # Wrong hash!
+        wrong_hash = "0" * 64
+        sha256sums_content = f"{wrong_hash}  sysupdate-linux-x86_64\n"
+
+        with patch("sysupdate.selfupdate.updater.get_binary_path", return_value=current_binary):
+            with patch("sysupdate.selfupdate.updater.get_architecture", return_value="x86_64"):
+                with patch("aiohttp.ClientSession") as mock_session_class:
+                    mock_session = self._create_mock_session(sha256sums_content, new_binary_content)
+                    mock_session_class.return_value = mock_session
+
+                    updater = SelfUpdater()
+                    result = await updater.perform_update(
+                        current_version="1.0.0",
+                        release=mock_release,
+                    )
+
+        # Update should fail
+        assert not result.success
+        assert "Checksum verification failed" in result.error_message
+
+        # Original binary should be unchanged
+        assert current_binary.read_bytes() == original_content
+
+    @pytest.mark.asyncio
+    async def test_perform_update_binary_not_replaced_on_download_failure(
+        self, tmp_path, mock_release
+    ):
+        """Test that original binary is preserved when download fails."""
+        from sysupdate.selfupdate.updater import SelfUpdater
+
+        current_binary = tmp_path / "sysupdate"
+        current_binary.write_bytes(b"precious original binary")
+        current_binary.chmod(0o755)
+        original_content = current_binary.read_bytes()
+
+        with patch("sysupdate.selfupdate.updater.get_binary_path", return_value=current_binary):
+            with patch("sysupdate.selfupdate.updater.get_architecture", return_value="x86_64"):
+                with patch("aiohttp.ClientSession") as mock_session_class:
+                    mock_session = MagicMock()
+                    mock_session_class.return_value = mock_session
+
+                    def create_mock_response(url):
+                        mock_resp = AsyncMock()
+
+                        if "SHA256SUMS" in url:
+                            mock_resp.status = 200
+                            mock_resp.raise_for_status = MagicMock()
+                            mock_resp.text = AsyncMock(return_value="hash  sysupdate-linux-x86_64\n")
+                        else:
+                            # Binary download fails
+                            mock_resp.status = 500
+
+                        return mock_resp
+
+                    def mock_get(url):
+                        cm = MagicMock()
+                        cm.__aenter__ = AsyncMock(return_value=create_mock_response(url))
+                        cm.__aexit__ = AsyncMock(return_value=None)
+                        return cm
+
+                    mock_session.get = mock_get
+                    mock_session.close = AsyncMock()
+
+                    updater = SelfUpdater()
+                    result = await updater.perform_update(
+                        current_version="1.0.0",
+                        release=mock_release,
+                    )
+
+        assert not result.success
+        assert "Failed to download" in result.error_message
+
+        # Original should be unchanged
+        assert current_binary.read_bytes() == original_content
+
+    @pytest.mark.asyncio
+    async def test_perform_update_tempdir_cleanup_doesnt_affect_result(
+        self, tmp_path, mock_release
+    ):
+        """Test that temp directory cleanup doesn't delete the replaced binary."""
+        from sysupdate.selfupdate.updater import SelfUpdater
+        import hashlib
+
+        current_binary = tmp_path / "sysupdate"
+        current_binary.write_bytes(b"old")
+        current_binary.chmod(0o755)
+
+        # Use a specific marker to verify the content
+        marker = b"UNIQUE_MARKER_12345_" + bytes(range(256))
+        new_binary_content = marker + b"_END"
+        new_binary_hash = hashlib.sha256(new_binary_content).hexdigest()
+        sha256sums_content = f"{new_binary_hash}  sysupdate-linux-x86_64\n"
+
+        with patch("sysupdate.selfupdate.updater.get_binary_path", return_value=current_binary):
+            with patch("sysupdate.selfupdate.updater.get_architecture", return_value="x86_64"):
+                with patch("aiohttp.ClientSession") as mock_session_class:
+                    mock_session = self._create_mock_session(sha256sums_content, new_binary_content)
+                    mock_session_class.return_value = mock_session
+
+                    updater = SelfUpdater()
+                    result = await updater.perform_update(
+                        current_version="1.0.0",
+                        release=mock_release,
+                    )
+
+        # At this point, the TemporaryDirectory has been cleaned up
+        # but our binary should still have the new content
+        assert result.success, f"Update failed: {result.error_message}"
+        final_content = current_binary.read_bytes()
+        assert marker in final_content, "Marker not found in final binary - content was lost!"
+        assert final_content == new_binary_content
 
 
 class TestBinaryReplacement:

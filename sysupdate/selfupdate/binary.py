@@ -39,8 +39,11 @@ def get_architecture() -> str:
 def get_binary_path() -> Path:
     """Find the current sysupdate binary path.
 
-    For PyApp binaries, the actual binary is the parent process that spawned
-    the embedded Python interpreter. We find it via /proc/<ppid>/exe.
+    Detection order:
+    1. PYAPP environment variable (set by PyApp when PYAPP_PASS_LOCATION=true)
+    2. Parent process /proc/<ppid>/exe (for some PyApp configurations)
+    3. sys.executable (for direct PyApp or venv installs)
+    4. PATH lookup via shutil.which
 
     Returns:
         Path to current binary
@@ -48,7 +51,17 @@ def get_binary_path() -> Path:
     Raises:
         RuntimeError: If binary cannot be found
     """
-    # Check parent process first (for PyApp: the wrapper that spawned Python)
+    # Check PYAPP environment variable first (PyApp sets this to the binary path
+    # when PYAPP_PASS_LOCATION=true is enabled during build)
+    pyapp_path = os.environ.get("PYAPP", "")
+    if pyapp_path and pyapp_path != "1":
+        # PYAPP contains an actual path, not just the flag "1"
+        pyapp_binary = Path(pyapp_path)
+        if pyapp_binary.exists() and pyapp_binary.is_file():
+            return pyapp_binary
+
+    # Check parent process (for PyApp: the wrapper that spawned Python)
+    # Note: This may not work if PyApp uses exec() which replaces the process
     ppid = os.getppid()
     try:
         parent_exe = Path(f"/proc/{ppid}/exe").resolve()

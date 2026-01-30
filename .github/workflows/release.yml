@@ -28,6 +28,8 @@ env:
   PYAPP_PYTHON_VERSION: "3.11"
   PYAPP_FULL_ISOLATION: "true"
   PYAPP_PIP_EXTERNAL: "true"
+  # Enable passing binary location to Python for self-update functionality
+  PYAPP_PASS_LOCATION: "true"
 
 jobs:
   build-wheel:
