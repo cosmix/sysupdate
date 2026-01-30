@@ -197,7 +197,7 @@ class TestCLIIntegration:
 
     @pytest.mark.asyncio
     async def test_run_updates_handles_exceptions(self):
-        """Test that exceptions in one updater don't stop the other."""
+        """Test that exceptions in one updater don't stop the other but result in failure exit code."""
         with patch('sysupdate.app.setup_logging'), \
              patch('sysupdate.app.Aria2Downloader') as mock_aria2:
             mock_aria2.return_value.check_available = AsyncMock(return_value=True)
@@ -220,10 +220,11 @@ class TestCLIIntegration:
 
             result = await cli._run_updates()
 
-            # Should still complete and return success
-            assert result == 0
+            # Both updaters should be called (exception doesn't stop others)
             self._get_updater_by_label(cli, "APT").updater.run_update.assert_called_once()
             self._get_updater_by_label(cli, "Flatpak").updater.run_update.assert_called_once()
+            # Should return failure exit code due to APT exception
+            assert result == 1
 
     @pytest.mark.asyncio
     async def test_run_updates_passes_dry_run(self):
