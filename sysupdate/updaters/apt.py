@@ -127,7 +127,7 @@ class AptUpdater:
             report(UpdateProgress(
                 phase=UpdatePhase.CHECKING,
                 progress=0.0,
-                message="Updating package lists...",
+                message="Refreshing package lists",
             ))
 
             checking_callback = create_scaled_callback(
@@ -312,16 +312,26 @@ class AptUpdater:
                 # Parse progress from update using the tracker
                 progress = tracker.parse_line(decoded)
                 if progress is not None:
+                    # Extract meaningful message from apt update output
+                    if "Hit:" in decoded:
+                        msg = "Syncing package sources"
+                    elif "Get:" in decoded:
+                        msg = "Fetching package lists"
+                    elif "Reading" in decoded:
+                        msg = "Checking for upgrades"
+                    else:
+                        msg = "Refreshing package lists"
                     report(UpdateProgress(
                         phase=UpdatePhase.CHECKING,
                         progress=progress,
-                        message=decoded[:60],
+                        message=msg,
                     ))
                 elif "Hit:" in decoded or "Get:" in decoded:
                     # Fallback for lines that don't advance progress
+                    msg = "Syncing package sources" if "Hit:" in decoded else "Fetching package lists"
                     report(UpdateProgress(
                         phase=UpdatePhase.CHECKING,
-                        message=decoded[:60],
+                        message=msg,
                     ))
 
             await self._process.wait()

@@ -101,6 +101,27 @@ class StatusColumn(SpinnerColumn):
         return Text(symbol, style=style)
 
 
+class PhaseAwareProgressColumn(TaskProgressColumn):
+    """Task progress column that hides percentage during checking phase."""
+
+    def render(self, task: RichTask) -> Text:
+        phase = task.fields.get("phase", "checking")
+        if phase == "checking":
+            return Text("", style="dim")
+        return super().render(task)
+
+
+class PhaseAwareBarColumn(BarColumn):
+    """Bar column that shows pulse animation during checking phase."""
+
+    def render(self, task: RichTask) -> Text:
+        phase = task.fields.get("phase", "checking")
+        if phase == "checking":
+            # Return empty/dim bar during checking
+            return Text(" " * (self.bar_width or 16), style="dim")
+        return super().render(task)
+
+
 class SpeedColumn(ProgressColumn):
     """Shows download speed when available."""
 
@@ -241,33 +262,46 @@ class SysUpdateCLI:
             phase_value = update.phase.value if update.phase else "checking"
 
             if update.phase == UpdatePhase.CHECKING:
-                # Show message if available (e.g., "Querying snap store...")
+                # During checking, show only spinner and message (no progress bar/percentage)
                 if update.message:
-                    # Extract short status from message
+                    # Extract short status from message (increased limit to 25 chars)
                     msg = update.message.rstrip(".")
-                    if len(msg) > 15:
-                        msg = msg[:14] + "…"
-                    desc = self._format_desc("", label, f"[dim]{msg}[/]")
+                    if len(msg) > 25:
+                        msg = msg[:24] + "…"
+                    desc = self._format_desc("", f"{label} [dim]|[/] {msg}")
                 else:
-                    desc = self._format_desc("", label, "[dim]checking...[/]")
+                    desc = self._format_desc("", f"{label} [dim]|[/] checking")
+                # Don't update completed during checking - keeps bar indeterminate
+                progress.update(
+                    task_id,
+                    description=desc,
+                    phase=phase_value,
+                )
             elif update.phase in (UpdatePhase.DOWNLOADING, UpdatePhase.INSTALLING):
                 phase_text = "downloading" if update.phase == UpdatePhase.DOWNLOADING else "installing"
                 if update.current_package:
                     pkg = update.current_package[:max_pkg_len]
                     desc = self._format_desc("", f"{label} [dim]|[/] {pkg}")
                 else:
-                    desc = self._format_desc("", label, f"[dim]{phase_text}...[/]")
+                    desc = self._format_desc("", f"{label} [dim]|[/] {phase_text}")
+                progress.update(
+                    task_id,
+                    completed=pct,
+                    description=desc,
+                    phase=phase_value,
+                    speed=update.speed,
+                    eta=update.eta,
+                )
             else:
                 desc = self._format_desc("", label)
-
-            progress.update(
-                task_id,
-                completed=pct,
-                description=desc,
-                phase=phase_value,
-                speed=update.speed,
-                eta=update.eta,
-            )
+                progress.update(
+                    task_id,
+                    completed=pct,
+                    description=desc,
+                    phase=phase_value,
+                    speed=update.speed,
+                    eta=update.eta,
+                )
         return on_progress
 
     async def _run_updates(self) -> int:
@@ -295,8 +329,8 @@ class SysUpdateCLI:
             TextColumn("  "),
             StatusColumn(spinner_name="dots", style="white", use_ascii=self._use_ascii),
             TextColumn("{task.description}"),
-            BarColumn(bar_width=BAR_WIDTH, style="dim", complete_style="white", finished_style="green"),
-            TaskProgressColumn(),
+            PhaseAwareBarColumn(bar_width=BAR_WIDTH, style="dim", complete_style="white", finished_style="green"),
+            PhaseAwareProgressColumn(),
             TimeElapsedColumn(),
             SpeedColumn(),
             ETAColumn(),
