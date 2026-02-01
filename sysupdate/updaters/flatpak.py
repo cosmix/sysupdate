@@ -19,7 +19,12 @@ from ..utils.parsing import parse_flatpak_output
 
 # Skip patterns for filtering runtime/extension packages
 FLATPAK_SKIP_PATTERNS = frozenset([
-    "Locale", "Extension", "Platform", "GL.", "Sdk", "Runtime"
+    "Locale",
+    "Extension",
+    "Platform",
+    "GL.",
+    "Sdk",
+    "Runtime",
 ])
 
 
@@ -42,7 +47,9 @@ class FlatpakUpdater:
 
         try:
             proc = await asyncio.create_subprocess_exec(
-                "flatpak", "remote-ls", "--updates",
+                "flatpak",
+                "remote-ls",
+                "--updates",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -60,10 +67,12 @@ class FlatpakUpdater:
                     display_name = name.split(".")[-1] if "." in name else name
                     branch = parts[1].strip() if len(parts) > 1 else ""
 
-                    packages.append(Package(
-                        name=display_name,
-                        new_version=branch,
-                    ))
+                    packages.append(
+                        Package(
+                            name=display_name,
+                            new_version=branch,
+                        )
+                    )
 
         except FileNotFoundError:
             return []  # Package manager not installed
@@ -92,22 +101,26 @@ class FlatpakUpdater:
                 callback(progress)
 
         try:
-            report(UpdateProgress(
-                phase=UpdatePhase.CHECKING,
-                progress=0.0,
-                message="Checking for Flatpak updates...",
-            ))
+            report(
+                UpdateProgress(
+                    phase=UpdatePhase.CHECKING,
+                    progress=0.0,
+                    message="Checking for Flatpak updates...",
+                )
+            )
 
             if dry_run:
                 packages = await self.check_updates()
                 result.packages = packages
                 result.success = True
-                report(UpdateProgress(
-                    phase=UpdatePhase.COMPLETE,
-                    progress=1.0,
-                    completed_packages=len(packages),
-                    total_packages=len(packages),
-                ))
+                report(
+                    UpdateProgress(
+                        phase=UpdatePhase.COMPLETE,
+                        progress=1.0,
+                        completed_packages=len(packages),
+                        total_packages=len(packages),
+                    )
+                )
             else:
                 scaled_callback = create_scaled_callback(
                     report,
@@ -116,30 +129,38 @@ class FlatpakUpdater:
                     phases_to_scale={UpdatePhase.DOWNLOADING, UpdatePhase.INSTALLING},
                 )
 
-                packages, success, error = await self._run_flatpak_update(scaled_callback)
+                packages, success, error = await self._run_flatpak_update(
+                    scaled_callback
+                )
                 result.packages = packages
                 result.success = success
                 result.error_message = error
 
                 if success:
-                    report(UpdateProgress(
-                        phase=UpdatePhase.COMPLETE,
-                        progress=1.0,
-                        completed_packages=len(packages),
-                        total_packages=len(packages),
-                    ))
+                    report(
+                        UpdateProgress(
+                            phase=UpdatePhase.COMPLETE,
+                            progress=1.0,
+                            completed_packages=len(packages),
+                            total_packages=len(packages),
+                        )
+                    )
                 else:
-                    report(UpdateProgress(
-                        phase=UpdatePhase.ERROR,
-                        message=error,
-                    ))
+                    report(
+                        UpdateProgress(
+                            phase=UpdatePhase.ERROR,
+                            message=error,
+                        )
+                    )
 
         except Exception as e:
             result.error_message = str(e)
-            report(UpdateProgress(
-                phase=UpdatePhase.ERROR,
-                message=str(e),
-            ))
+            report(
+                UpdateProgress(
+                    phase=UpdatePhase.ERROR,
+                    message=str(e),
+                )
+            )
 
         finally:
             if self._logger:
@@ -168,7 +189,10 @@ class FlatpakUpdater:
             env["FLATPAK_TTY_MODE"] = "none"
 
             self._process = await asyncio.create_subprocess_exec(
-                "flatpak", "update", "-y", "--noninteractive",
+                "flatpak",
+                "update",
+                "-y",
+                "--noninteractive",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
                 env=env,
@@ -194,14 +218,14 @@ class FlatpakUpdater:
                     break
 
                 # Decode and process
-                text = chunk.decode(errors='replace')
+                text = chunk.decode(errors="replace")
                 buffer += text
 
                 # Process complete lines (both \n and \r delimited)
-                while '\n' in buffer or '\r' in buffer:
+                while "\n" in buffer or "\r" in buffer:
                     # Find the earliest delimiter
-                    newline_pos = buffer.find('\n')
-                    cr_pos = buffer.find('\r')
+                    newline_pos = buffer.find("\n")
+                    cr_pos = buffer.find("\r")
 
                     if newline_pos == -1:
                         split_pos = cr_pos
@@ -211,7 +235,7 @@ class FlatpakUpdater:
                         split_pos = min(newline_pos, cr_pos)
 
                     line = buffer[:split_pos].strip()
-                    buffer = buffer[split_pos + 1:]
+                    buffer = buffer[split_pos + 1 :]
 
                     if not line:
                         continue
@@ -223,11 +247,13 @@ class FlatpakUpdater:
 
                     # Check for "Nothing to do"
                     if "Nothing to do" in line:
-                        report(UpdateProgress(
-                            phase=UpdatePhase.COMPLETE,
-                            progress=1.0,
-                            message="Already up to date",
-                        ))
+                        report(
+                            UpdateProgress(
+                                phase=UpdatePhase.COMPLETE,
+                                progress=1.0,
+                                message="Already up to date",
+                            )
+                        )
                         await self._process.wait()
                         return [], True, ""
 
@@ -248,8 +274,7 @@ class FlatpakUpdater:
 
                         # Try to extract current app name
                         app_match = re.search(
-                            r"(?:Downloading|Fetching)\s+([\w.]+)",
-                            line
+                            r"(?:Downloading|Fetching)\s+([\w.]+)", line
                         )
                         if app_match:
                             ref = app_match.group(1).rstrip(".")
@@ -266,43 +291,51 @@ class FlatpakUpdater:
                         # Only report if progress increased (avoid duplicates)
                         if progress > last_progress_report + 0.01:
                             last_progress_report = progress
-                            report(UpdateProgress(
-                                phase=UpdatePhase.DOWNLOADING,
-                                progress=progress,
-                                total_packages=total_apps,
-                                completed_packages=completed,
-                                current_package=current_app,
-                            ))
+                            report(
+                                UpdateProgress(
+                                    phase=UpdatePhase.DOWNLOADING,
+                                    progress=progress,
+                                    total_packages=total_apps,
+                                    completed_packages=completed,
+                                    current_package=current_app,
+                                )
+                            )
 
                     # Detect installation/updating actions
                     action_match = re.search(
-                        r"(?:Installing|Updating|Deploying)\s+(\S+)",
-                        line
+                        r"(?:Installing|Updating|Deploying)\s+(\S+)", line
                     )
                     if action_match:
                         app_ref = action_match.group(1)
                         if not any(skip in app_ref for skip in FLATPAK_SKIP_PATTERNS):
                             current_app = app_ref.split(".")[-1]
                             progress = (completed + 0.5) / max(total_apps, 1)
-                            report(UpdateProgress(
-                                phase=UpdatePhase.INSTALLING,
-                                progress=progress,
-                                total_packages=total_apps,
-                                completed_packages=completed,
-                                current_package=current_app,
-                            ))
+                            report(
+                                UpdateProgress(
+                                    phase=UpdatePhase.INSTALLING,
+                                    progress=progress,
+                                    total_packages=total_apps,
+                                    completed_packages=completed,
+                                    current_package=current_app,
+                                )
+                            )
 
                     # Count completions
-                    if any(marker in line.lower() for marker in ["done", "installed", "updated"]):
+                    if any(
+                        marker in line.lower()
+                        for marker in ["done", "installed", "updated"]
+                    ):
                         if not any(skip in line for skip in FLATPAK_SKIP_PATTERNS):
                             completed += 1
-                            report(UpdateProgress(
-                                phase=UpdatePhase.INSTALLING,
-                                progress=completed / max(total_apps, 1),
-                                total_packages=total_apps,
-                                completed_packages=completed,
-                                current_package=current_app,
-                            ))
+                            report(
+                                UpdateProgress(
+                                    phase=UpdatePhase.INSTALLING,
+                                    progress=completed / max(total_apps, 1),
+                                    total_packages=total_apps,
+                                    completed_packages=completed,
+                                    current_package=current_app,
+                                )
+                            )
 
             await self._process.wait()
 

@@ -7,4 +7,13 @@ from .snap import SnapUpdater
 from .dnf import DnfUpdater
 from .pacman import PacmanUpdater
 
-__all__ = ["Package", "UpdateResult", "UpdaterProtocol", "AptUpdater", "FlatpakUpdater", "SnapUpdater", "DnfUpdater", "PacmanUpdater"]
+__all__ = [
+    "Package",
+    "UpdateResult",
+    "UpdaterProtocol",
+    "AptUpdater",
+    "FlatpakUpdater",
+    "SnapUpdater",
+    "DnfUpdater",
+    "PacmanUpdater",
+]

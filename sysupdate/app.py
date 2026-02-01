@@ -19,7 +19,13 @@ from rich.table import Table
 from rich.text import Text
 
 from . import __version__
-from .updaters.base import UpdatePhase, UpdateProgress, Package, UpdaterProtocol, UpdateResult
+from .updaters.base import (
+    UpdatePhase,
+    UpdateProgress,
+    Package,
+    UpdaterProtocol,
+    UpdateResult,
+)
 from .updaters.apt import AptUpdater
 from .updaters.flatpak import FlatpakUpdater
 from .updaters.snap import SnapUpdater
@@ -55,6 +61,7 @@ _MARKUP_PATTERN = re.compile(r"\[(green|red|dim|/)\]")
 @dataclass
 class UpdaterConfig:
     """Configuration for an updater in the CLI."""
+
     updater: UpdaterProtocol
     label: str
     max_pkg_len: int = 12
@@ -136,7 +143,7 @@ class ETAColumn(ProgressColumn):
             if len(text) < self.ETA_WIDTH:
                 text = text + " " * (self.ETA_WIDTH - len(text))
             elif len(text) > self.ETA_WIDTH:
-                text = text[:self.ETA_WIDTH]
+                text = text[: self.ETA_WIDTH]
             return Text(text, style="dim")
         return Text(" " * self.ETA_WIDTH, style="dim")
 
@@ -191,7 +198,10 @@ class SysUpdateCLI:
             line_len = len(line)
             for i, char in enumerate(line):
                 color_idx = int(i / line_len * len(HEADER_COLORS))
-                text.append(char, style=f"bold {HEADER_COLORS[min(color_idx, len(HEADER_COLORS) - 1)]}")
+                text.append(
+                    char,
+                    style=f"bold {HEADER_COLORS[min(color_idx, len(HEADER_COLORS) - 1)]}",
+                )
             self.console.print(text)
 
         # Version centered under the logo
@@ -230,7 +240,7 @@ class SysUpdateCLI:
             return text + " " * (DESC_WIDTH - visible_len)
         elif visible_len > DESC_WIDTH:
             # Truncate visible text and rebuild with markup
-            truncated_visible = visible[:DESC_WIDTH - 1] + "…"
+            truncated_visible = visible[: DESC_WIDTH - 1] + "…"
             return truncated_visible
         return text
 
@@ -249,6 +259,7 @@ class SysUpdateCLI:
             label: Label for the updater (e.g., "APT", "Flatpak")
             max_pkg_len: Maximum length for package name display
         """
+
         def on_progress(update: UpdateProgress) -> None:
             pct = int(update.progress * 100)
             phase_value = update.phase.value if update.phase else "checking"
@@ -270,7 +281,11 @@ class SysUpdateCLI:
                     phase=phase_value,
                 )
             elif update.phase in (UpdatePhase.DOWNLOADING, UpdatePhase.INSTALLING):
-                phase_text = "downloading" if update.phase == UpdatePhase.DOWNLOADING else "installing"
+                phase_text = (
+                    "downloading"
+                    if update.phase == UpdatePhase.DOWNLOADING
+                    else "installing"
+                )
                 if update.current_package:
                     pkg = update.current_package[:max_pkg_len]
                     desc = self._format_desc("", f"{label} [dim]|[/] {pkg}")
@@ -297,6 +312,7 @@ class SysUpdateCLI:
                     speed=update.speed,
                     eta=update.eta,
                 )
+
         return on_progress
 
     async def _run_updates(self) -> int:
@@ -308,15 +324,17 @@ class SysUpdateCLI:
             await prompt_install_aria2(self.console)
 
         # Check which updaters are available
-        availability = await asyncio.gather(
-            *[cfg.updater.check_available() for cfg in self._updaters]
-        )
+        availability = await asyncio.gather(*[
+            cfg.updater.check_available() for cfg in self._updaters
+        ])
         available_updaters = [
             (cfg, avail) for cfg, avail in zip(self._updaters, availability)
         ]
 
         # Collect results by label
-        results_by_label: dict[str, list[Package]] = {cfg.label: [] for cfg in self._updaters}
+        results_by_label: dict[str, list[Package]] = {
+            cfg.label: [] for cfg in self._updaters
+        }
 
         failure_count = 0
 
@@ -324,7 +342,13 @@ class SysUpdateCLI:
             TextColumn("  "),
             StatusColumn(spinner_name="dots", style="white", use_ascii=self._use_ascii),
             TextColumn("{task.description}"),
-            BarColumn(bar_width=BAR_WIDTH, style="dim", complete_style="white", finished_style="green", pulse_style="cyan"),
+            BarColumn(
+                bar_width=BAR_WIDTH,
+                style="dim",
+                complete_style="white",
+                finished_style="green",
+                pulse_style="cyan",
+            ),
             PhaseAwareProgressColumn(),
             TimeElapsedColumn(),
             SpeedColumn(),
@@ -361,7 +385,9 @@ class SysUpdateCLI:
                         if result.success:
                             results_by_label[label] = result.packages
                         else:
-                            self._logger.error(f"{label} update failed: {result.error_message}")
+                            self._logger.error(
+                                f"{label} update failed: {result.error_message}"
+                            )
                             failure_count += 1
 
         self.console.print()
@@ -391,7 +417,7 @@ class SysUpdateCLI:
             total=100,
             completed=100,
             success=result.success,
-            description=self._format_desc("", cfg.label)
+            description=self._format_desc("", cfg.label),
         )
         return result
 
@@ -399,11 +425,27 @@ class SysUpdateCLI:
         """Print minimal summary of updated packages."""
         # Table display configuration per label
         table_config = {
-            "APT": {"title": "APT Packages", "name_col": "Package", "show_versions": True},
-            "Flatpak": {"title": "Flatpak Apps", "name_col": "App", "show_versions": False},
+            "APT": {
+                "title": "APT Packages",
+                "name_col": "Package",
+                "show_versions": True,
+            },
+            "Flatpak": {
+                "title": "Flatpak Apps",
+                "name_col": "App",
+                "show_versions": False,
+            },
             "Snap": {"title": "Snap Apps", "name_col": "App", "show_versions": True},
-            "DNF": {"title": "DNF Packages", "name_col": "Package", "show_versions": True},
-            "Pacman": {"title": "Pacman Packages", "name_col": "Package", "show_versions": True},
+            "DNF": {
+                "title": "DNF Packages",
+                "name_col": "Package",
+                "show_versions": True,
+            },
+            "Pacman": {
+                "title": "Pacman Packages",
+                "name_col": "Package",
+                "show_versions": True,
+            },
         }
 
         # ASCII fallback symbols
@@ -420,9 +462,13 @@ class SysUpdateCLI:
             return
 
         # Count summary
-        parts = [f"{len(pkgs)} {label}" for label, pkgs in results_by_label.items() if pkgs]
+        parts = [
+            f"{len(pkgs)} {label}" for label, pkgs in results_by_label.items() if pkgs
+        ]
         self.console.print()
-        self.console.print(f"   [green]{check_char}[/] Updated [bold]{total}[/] packages ({', '.join(parts)})")
+        self.console.print(
+            f"   [green]{check_char}[/] Updated [bold]{total}[/] packages ({', '.join(parts)})"
+        )
         self.console.print()
 
         # Print tables for each manager with updates
@@ -430,7 +476,9 @@ class SysUpdateCLI:
             if not packages:
                 continue
 
-            cfg = table_config.get(label, {"title": label, "name_col": "Package", "show_versions": True})
+            cfg = table_config.get(
+                label, {"title": label, "name_col": "Package", "show_versions": True}
+            )
             self.console.print(f"   [bold]{cfg['title']}[/] [dim]({len(packages)})[/]")
             self.console.print()
             self._print_package_table(packages, cfg["name_col"], cfg["show_versions"])

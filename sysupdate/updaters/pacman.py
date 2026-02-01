@@ -45,7 +45,8 @@ class PacmanUpdater:
             else:
                 # Fall back to pacman -Qu (may show stale results without -Sy)
                 proc = await asyncio.create_subprocess_exec(
-                    "pacman", "-Qu",
+                    "pacman",
+                    "-Qu",
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
@@ -65,22 +66,26 @@ class PacmanUpdater:
                     continue
 
                 # checkupdates format: "package oldver -> newver"
-                arrow_match = re.match(r'^(\S+)\s+(\S+)\s+->\s+(\S+)$', line)
+                arrow_match = re.match(r"^(\S+)\s+(\S+)\s+->\s+(\S+)$", line)
                 if arrow_match:
-                    packages.append(Package(
-                        name=arrow_match.group(1),
-                        old_version=arrow_match.group(2),
-                        new_version=arrow_match.group(3),
-                    ))
+                    packages.append(
+                        Package(
+                            name=arrow_match.group(1),
+                            old_version=arrow_match.group(2),
+                            new_version=arrow_match.group(3),
+                        )
+                    )
                     continue
 
                 # pacman -Qu format: "package newver"
-                simple_match = re.match(r'^(\S+)\s+(\S+)$', line)
+                simple_match = re.match(r"^(\S+)\s+(\S+)$", line)
                 if simple_match:
-                    packages.append(Package(
-                        name=simple_match.group(1),
-                        new_version=simple_match.group(2),
-                    ))
+                    packages.append(
+                        Package(
+                            name=simple_match.group(1),
+                            new_version=simple_match.group(2),
+                        )
+                    )
 
         except FileNotFoundError:
             return []  # Package manager not installed
@@ -99,7 +104,9 @@ class PacmanUpdater:
 
         try:
             proc = await asyncio.create_subprocess_exec(
-                "pacman", "-Q", *package_names,
+                "pacman",
+                "-Q",
+                *package_names,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -140,22 +147,26 @@ class PacmanUpdater:
                 callback(progress)
 
         try:
-            report(UpdateProgress(
-                phase=UpdatePhase.CHECKING,
-                progress=0.0,
-                message="Checking for Pacman updates...",
-            ))
+            report(
+                UpdateProgress(
+                    phase=UpdatePhase.CHECKING,
+                    progress=0.0,
+                    message="Checking for Pacman updates...",
+                )
+            )
 
             if dry_run:
                 packages = await self.check_updates()
                 result.packages = packages
                 result.success = True
-                report(UpdateProgress(
-                    phase=UpdatePhase.COMPLETE,
-                    progress=1.0,
-                    completed_packages=len(packages),
-                    total_packages=len(packages),
-                ))
+                report(
+                    UpdateProgress(
+                        phase=UpdatePhase.COMPLETE,
+                        progress=1.0,
+                        completed_packages=len(packages),
+                        total_packages=len(packages),
+                    )
+                )
             else:
                 scaled_callback = create_scaled_callback(
                     report,
@@ -164,30 +175,38 @@ class PacmanUpdater:
                     phases_to_scale={UpdatePhase.DOWNLOADING, UpdatePhase.INSTALLING},
                 )
 
-                packages, success, error = await self._run_pacman_upgrade(scaled_callback)
+                packages, success, error = await self._run_pacman_upgrade(
+                    scaled_callback
+                )
                 result.packages = packages
                 result.success = success
                 result.error_message = error
 
                 if success:
-                    report(UpdateProgress(
-                        phase=UpdatePhase.COMPLETE,
-                        progress=1.0,
-                        completed_packages=len(packages),
-                        total_packages=len(packages),
-                    ))
+                    report(
+                        UpdateProgress(
+                            phase=UpdatePhase.COMPLETE,
+                            progress=1.0,
+                            completed_packages=len(packages),
+                            total_packages=len(packages),
+                        )
+                    )
                 else:
-                    report(UpdateProgress(
-                        phase=UpdatePhase.ERROR,
-                        message=error,
-                    ))
+                    report(
+                        UpdateProgress(
+                            phase=UpdatePhase.ERROR,
+                            message=error,
+                        )
+                    )
 
         except Exception as e:
             result.error_message = str(e)
-            report(UpdateProgress(
-                phase=UpdatePhase.ERROR,
-                message=str(e),
-            ))
+            report(
+                UpdateProgress(
+                    phase=UpdatePhase.ERROR,
+                    message=str(e),
+                )
+            )
 
         finally:
             if self._logger:
@@ -209,21 +228,24 @@ class PacmanUpdater:
             # First check what updates are available
             pending = await self.check_updates()
             if not pending:
-                report(UpdateProgress(
-                    phase=UpdatePhase.COMPLETE,
-                    progress=1.0,
-                    message="All packages up to date",
-                ))
+                report(
+                    UpdateProgress(
+                        phase=UpdatePhase.COMPLETE,
+                        progress=1.0,
+                        message="All packages up to date",
+                    )
+                )
                 return [], True, ""
 
             total_packages = len(pending)
-            package_names = [p.name for p in pending]
 
-            report(UpdateProgress(
-                phase=UpdatePhase.CHECKING,
-                progress=0.05,
-                message=f"Found {total_packages} update(s)",
-            ))
+            report(
+                UpdateProgress(
+                    phase=UpdatePhase.CHECKING,
+                    progress=0.05,
+                    message=f"Found {total_packages} update(s)",
+                )
+            )
 
             # Get current versions before update (if not already known from checkupdates)
             old_versions = {p.name: p.old_version for p in pending if p.old_version}
@@ -234,7 +256,12 @@ class PacmanUpdater:
 
             # Run pacman -Syu --noconfirm
             self._process = await asyncio.create_subprocess_exec(
-                "sudo", "pacman", "-Syu", "--noconfirm", "--color", "never",
+                "sudo",
+                "pacman",
+                "-Syu",
+                "--noconfirm",
+                "--color",
+                "never",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
             )
@@ -243,14 +270,11 @@ class PacmanUpdater:
             if not stdout:
                 return [], False, "Failed to create subprocess stdout pipe"
 
-            completed = 0
             current_package = ""
             buffer = ""
             last_progress_report = 0.0
             in_downloading_phase = False
-            in_installing_phase = False
             download_count = 0
-            install_count = 0
 
             async def read_chunk() -> bytes:
                 """Read available data from stdout."""
@@ -261,12 +285,12 @@ class PacmanUpdater:
                 if not chunk:
                     break
 
-                text = chunk.decode(errors='replace')
+                text = chunk.decode(errors="replace")
                 buffer += text
 
-                while '\n' in buffer or '\r' in buffer:
-                    newline_pos = buffer.find('\n')
-                    cr_pos = buffer.find('\r')
+                while "\n" in buffer or "\r" in buffer:
+                    newline_pos = buffer.find("\n")
+                    cr_pos = buffer.find("\r")
 
                     if newline_pos == -1:
                         split_pos = cr_pos
@@ -276,7 +300,7 @@ class PacmanUpdater:
                         split_pos = min(newline_pos, cr_pos)
 
                     line = buffer[:split_pos].strip()
-                    buffer = buffer[split_pos + 1:]
+                    buffer = buffer[split_pos + 1 :]
 
                     if not line:
                         continue
@@ -287,50 +311,60 @@ class PacmanUpdater:
 
                     # Check for "there is nothing to do" message
                     if "there is nothing to do" in line.lower():
-                        report(UpdateProgress(
-                            phase=UpdatePhase.COMPLETE,
-                            progress=1.0,
-                            message="All packages up to date",
-                        ))
+                        report(
+                            UpdateProgress(
+                                phase=UpdatePhase.COMPLETE,
+                                progress=1.0,
+                                message="All packages up to date",
+                            )
+                        )
                         await self._process.wait()
                         return [], True, ""
 
                     # Detect phase: ":: Retrieving packages..."
-                    if "retrieving packages" in line.lower() or "downloading" in line.lower():
+                    if (
+                        "retrieving packages" in line.lower()
+                        or "downloading" in line.lower()
+                    ):
                         in_downloading_phase = True
-                        in_installing_phase = False
-                        report(UpdateProgress(
-                            phase=UpdatePhase.DOWNLOADING,
-                            progress=0.1,
-                            message="Downloading packages...",
-                        ))
+                        report(
+                            UpdateProgress(
+                                phase=UpdatePhase.DOWNLOADING,
+                                progress=0.1,
+                                message="Downloading packages...",
+                            )
+                        )
                         continue
 
                     # Detect install phase: "(x/y) upgrading" or "(x/y) installing"
-                    install_match = re.search(r'^\((\d+)/(\d+)\)\s+(upgrading|installing|reinstalling)\s+(\S+)', line, re.IGNORECASE)
+                    install_match = re.search(
+                        r"^\((\d+)/(\d+)\)\s+(upgrading|installing|reinstalling)\s+(\S+)",
+                        line,
+                        re.IGNORECASE,
+                    )
                     if install_match:
                         in_downloading_phase = False
-                        in_installing_phase = True
                         current_idx = int(install_match.group(1))
                         total_idx = int(install_match.group(2))
                         action = install_match.group(3).lower()
                         pkg_name = install_match.group(4)
 
                         current_package = pkg_name
-                        install_count = current_idx
 
                         # Progress: 50-100% for install phase
                         progress = 0.5 + (current_idx / max(total_idx, 1)) * 0.5
 
                         if progress > last_progress_report + 0.01:
                             last_progress_report = progress
-                            report(UpdateProgress(
-                                phase=UpdatePhase.INSTALLING,
-                                progress=progress,
-                                total_packages=total_packages,
-                                completed_packages=current_idx,
-                                current_package=current_package,
-                            ))
+                            report(
+                                UpdateProgress(
+                                    phase=UpdatePhase.INSTALLING,
+                                    progress=progress,
+                                    total_packages=total_packages,
+                                    completed_packages=current_idx,
+                                    current_package=current_package,
+                                )
+                            )
 
                         # Track completed packages
                         if action in ("upgrading", "reinstalling"):
@@ -340,19 +374,25 @@ class PacmanUpdater:
                                     matched_pkg = p
                                     break
 
-                            if matched_pkg and matched_pkg not in [pkg for pkg in packages]:
+                            if matched_pkg and matched_pkg not in [
+                                pkg for pkg in packages
+                            ]:
                                 old_ver = old_versions.get(matched_pkg.name, "")
-                                packages.append(Package(
-                                    name=matched_pkg.name,
-                                    old_version=old_ver,
-                                    new_version=matched_pkg.new_version,
-                                    status="complete",
-                                ))
+                                packages.append(
+                                    Package(
+                                        name=matched_pkg.name,
+                                        old_version=old_ver,
+                                        new_version=matched_pkg.new_version,
+                                        status="complete",
+                                    )
+                                )
                         continue
 
-                    # Parse download progress: "package-name   x.x MiB   y.y MiB/s xx:xx [####] 100%"
+                    # Parse download progress: "package-name   x.x MB   y.y MB/s xx:xx [####] 100%"
                     # or simpler: downloading package...
-                    download_match = re.search(r'downloading\s+(\S+)', line, re.IGNORECASE)
+                    download_match = re.search(
+                        r"downloading\s+(\S+)", line, re.IGNORECASE
+                    )
                     if download_match and in_downloading_phase:
                         current_package = download_match.group(1)
                         download_count += 1
@@ -361,13 +401,15 @@ class PacmanUpdater:
 
                         if progress > last_progress_report + 0.01:
                             last_progress_report = progress
-                            report(UpdateProgress(
-                                phase=UpdatePhase.DOWNLOADING,
-                                progress=progress,
-                                total_packages=total_packages,
-                                completed_packages=download_count,
-                                current_package=current_package,
-                            ))
+                            report(
+                                UpdateProgress(
+                                    phase=UpdatePhase.DOWNLOADING,
+                                    progress=progress,
+                                    total_packages=total_packages,
+                                    completed_packages=download_count,
+                                    current_package=current_package,
+                                )
+                            )
 
             await self._process.wait()
 

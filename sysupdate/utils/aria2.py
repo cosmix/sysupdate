@@ -16,24 +16,13 @@ async def prompt_install_aria2(console: Console) -> bool:
     """
     # Barber-pole border - yellow and dim (works on light and dark terminals)
     border = "".join(
-        "[bold yellow]█[/]" if i % 2 == 0 else "[dim]░[/]"
-        for i in range(48)
+        "[bold yellow]█[/]" if i % 2 == 0 else "[dim]░[/]" for i in range(48)
     )
-
-    # Yellow warning triangle
-    triangle = [
-        "              [bold yellow]▄[/]",
-        "             [bold yellow]▟█▙[/]",
-        "            [bold yellow]▟███▙[/]",
-    ]
 
     console.print()
     console.print(f"  {border}")
     console.print()
-    for line in triangle:
-        console.print(line)
-    console.print()
-    console.print("  [bold]aria2c is not installed[/]")
+    console.print("  [bold yellow]![/]  [bold]aria2c is not installed[/]")
     console.print("  [dim]Downloads will be sequential (slower)[/]")
     console.print()
     console.print("  aria2 enables parallel package downloads,")
@@ -77,7 +66,11 @@ async def _install_aria2(console: Console) -> bool:
 
     try:
         process = await asyncio.create_subprocess_exec(
-            "sudo", "apt", "install", "-y", "aria2",
+            "sudo",
+            "apt",
+            "install",
+            "-y",
+            "aria2",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
         )
@@ -99,7 +92,9 @@ async def _install_aria2(console: Console) -> bool:
         else:
             console.print()
             console.print("  [red]✗ Failed to install aria2.[/]")
-            console.print("  [dim]Continuing with standard apt. This will take longer![/]")
+            console.print(
+                "  [dim]Continuing with standard apt. This will take longer![/]"
+            )
             console.print()
             return False
 

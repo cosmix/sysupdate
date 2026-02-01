@@ -189,7 +189,10 @@ async def _replace_with_sudo(
     """
     # Step 1: Backup current binary
     proc = await asyncio.create_subprocess_exec(
-        "sudo", "mv", str(current_path), str(backup_path),
+        "sudo",
+        "mv",
+        str(current_path),
+        str(backup_path),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -201,7 +204,10 @@ async def _replace_with_sudo(
 
     # Step 2: Move new binary to target location
     proc = await asyncio.create_subprocess_exec(
-        "sudo", "mv", str(new_binary_path), str(current_path),
+        "sudo",
+        "mv",
+        str(new_binary_path),
+        str(current_path),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -211,7 +217,10 @@ async def _replace_with_sudo(
         error = stderr.decode().strip() if stderr else "Failed to move new binary"
         # Restore backup
         restore_proc = await asyncio.create_subprocess_exec(
-            "sudo", "mv", str(backup_path), str(current_path),
+            "sudo",
+            "mv",
+            str(backup_path),
+            str(current_path),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -220,7 +229,9 @@ async def _replace_with_sudo(
 
     # Step 3: Remove backup on success
     proc = await asyncio.create_subprocess_exec(
-        "sudo", "rm", str(backup_path),
+        "sudo",
+        "rm",
+        str(backup_path),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )

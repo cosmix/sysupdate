@@ -17,8 +17,15 @@ from ..utils.logging import UpdateLogger
 
 # Skip patterns for filtering system/core snaps that shouldn't be shown
 SNAP_SKIP_PATTERNS = frozenset([
-    "snapd", "core", "core18", "core20", "core22", "core24", "bare",
-    "gnome-", "gtk-common-themes"
+    "snapd",
+    "core",
+    "core18",
+    "core20",
+    "core22",
+    "core24",
+    "bare",
+    "gnome-",
+    "gtk-common-themes",
 ])
 
 
@@ -41,7 +48,9 @@ class SnapUpdater:
 
         try:
             proc = await asyncio.create_subprocess_exec(
-                "snap", "refresh", "--list",
+                "snap",
+                "refresh",
+                "--list",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -65,10 +74,12 @@ class SnapUpdater:
                     name = parts[0].strip()
                     version = parts[1].strip() if len(parts) > 1 else ""
 
-                    packages.append(Package(
-                        name=name,
-                        new_version=version,
-                    ))
+                    packages.append(
+                        Package(
+                            name=name,
+                            new_version=version,
+                        )
+                    )
 
         except FileNotFoundError:
             return []  # Package manager not installed
@@ -84,7 +95,8 @@ class SnapUpdater:
 
         try:
             proc = await asyncio.create_subprocess_exec(
-                "snap", "list",
+                "snap",
+                "list",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -123,22 +135,26 @@ class SnapUpdater:
                 callback(progress)
 
         try:
-            report(UpdateProgress(
-                phase=UpdatePhase.CHECKING,
-                progress=0.0,
-                message="Checking for Snap updates...",
-            ))
+            report(
+                UpdateProgress(
+                    phase=UpdatePhase.CHECKING,
+                    progress=0.0,
+                    message="Checking for Snap updates...",
+                )
+            )
 
             if dry_run:
                 packages = await self.check_updates()
                 result.packages = packages
                 result.success = True
-                report(UpdateProgress(
-                    phase=UpdatePhase.COMPLETE,
-                    progress=1.0,
-                    completed_packages=len(packages),
-                    total_packages=len(packages),
-                ))
+                report(
+                    UpdateProgress(
+                        phase=UpdatePhase.COMPLETE,
+                        progress=1.0,
+                        completed_packages=len(packages),
+                        total_packages=len(packages),
+                    )
+                )
             else:
                 scaled_callback = create_scaled_callback(
                     report,
@@ -153,24 +169,30 @@ class SnapUpdater:
                 result.error_message = error
 
                 if success:
-                    report(UpdateProgress(
-                        phase=UpdatePhase.COMPLETE,
-                        progress=1.0,
-                        completed_packages=len(packages),
-                        total_packages=len(packages),
-                    ))
+                    report(
+                        UpdateProgress(
+                            phase=UpdatePhase.COMPLETE,
+                            progress=1.0,
+                            completed_packages=len(packages),
+                            total_packages=len(packages),
+                        )
+                    )
                 else:
-                    report(UpdateProgress(
-                        phase=UpdatePhase.ERROR,
-                        message=error,
-                    ))
+                    report(
+                        UpdateProgress(
+                            phase=UpdatePhase.ERROR,
+                            message=error,
+                        )
+                    )
 
         except Exception as e:
             result.error_message = str(e)
-            report(UpdateProgress(
-                phase=UpdatePhase.ERROR,
-                message=str(e),
-            ))
+            report(
+                UpdateProgress(
+                    phase=UpdatePhase.ERROR,
+                    message=str(e),
+                )
+            )
 
         finally:
             if self._logger:
@@ -192,28 +214,33 @@ class SnapUpdater:
             # First check what updates are available
             pending = await self.check_updates()
             if not pending:
-                report(UpdateProgress(
-                    phase=UpdatePhase.COMPLETE,
-                    progress=1.0,
-                    message="All snaps up to date",
-                ))
+                report(
+                    UpdateProgress(
+                        phase=UpdatePhase.COMPLETE,
+                        progress=1.0,
+                        message="All snaps up to date",
+                    )
+                )
                 return [], True, ""
 
             total_snaps = len(pending)
             package_names = [p.name for p in pending]
 
             # Report progress after finding updates (still in checking phase)
-            report(UpdateProgress(
-                phase=UpdatePhase.CHECKING,
-                progress=0.05,
-                message=f"Found {total_snaps} update(s)",
-            ))
+            report(
+                UpdateProgress(
+                    phase=UpdatePhase.CHECKING,
+                    progress=0.05,
+                    message=f"Found {total_snaps} update(s)",
+                )
+            )
 
             # Get current versions before update
             old_versions = await self._get_current_versions(package_names)
 
             self._process = await asyncio.create_subprocess_exec(
-                "snap", "refresh",
+                "snap",
+                "refresh",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
             )
@@ -236,12 +263,12 @@ class SnapUpdater:
                 if not chunk:
                     break
 
-                text = chunk.decode(errors='replace')
+                text = chunk.decode(errors="replace")
                 buffer += text
 
-                while '\n' in buffer or '\r' in buffer:
-                    newline_pos = buffer.find('\n')
-                    cr_pos = buffer.find('\r')
+                while "\n" in buffer or "\r" in buffer:
+                    newline_pos = buffer.find("\n")
+                    cr_pos = buffer.find("\r")
 
                     if newline_pos == -1:
                         split_pos = cr_pos
@@ -251,7 +278,7 @@ class SnapUpdater:
                         split_pos = min(newline_pos, cr_pos)
 
                     line = buffer[:split_pos].strip()
-                    buffer = buffer[split_pos + 1:]
+                    buffer = buffer[split_pos + 1 :]
 
                     if not line:
                         continue
@@ -262,20 +289,22 @@ class SnapUpdater:
 
                     # Check for "All snaps up to date"
                     if "All snaps up to date" in line:
-                        report(UpdateProgress(
-                            phase=UpdatePhase.COMPLETE,
-                            progress=1.0,
-                            message="All snaps up to date",
-                        ))
+                        report(
+                            UpdateProgress(
+                                phase=UpdatePhase.COMPLETE,
+                                progress=1.0,
+                                message="All snaps up to date",
+                            )
+                        )
                         await self._process.wait()
                         return [], True, ""
 
                     # Parse progress percentage (snap sometimes shows download %)
                     # Try to extract snap name from progress lines like "snap-name 42%"
-                    progress_match = re.search(r'(\S+)\s+(\d+)\s*%', line)
+                    progress_match = re.search(r"(\S+)\s+(\d+)\s*%", line)
                     if not progress_match:
                         # Fallback: just percentage
-                        progress_match = re.search(r'(\d+)\s*%', line)
+                        progress_match = re.search(r"(\d+)\s*%", line)
                         if progress_match:
                             pct = int(progress_match.group(1))
                             snap_in_progress = current_snap
@@ -286,7 +315,9 @@ class SnapUpdater:
                         snap_in_progress = progress_match.group(1)
                         pct = int(progress_match.group(2))
                         # Update current_snap if we extracted a name
-                        if snap_in_progress and not any(skip in snap_in_progress for skip in SNAP_SKIP_PATTERNS):
+                        if snap_in_progress and not any(
+                            skip in snap_in_progress for skip in SNAP_SKIP_PATTERNS
+                        ):
                             current_snap = snap_in_progress
 
                     if pct is not None:
@@ -294,16 +325,20 @@ class SnapUpdater:
                         # Only report if progress increased (avoid backwards movement)
                         if progress > last_progress_report + 0.01:
                             last_progress_report = progress
-                            report(UpdateProgress(
-                                phase=UpdatePhase.DOWNLOADING,
-                                progress=progress,
-                                total_packages=total_snaps,
-                                completed_packages=completed,
-                                current_package=current_snap,
-                            ))
+                            report(
+                                UpdateProgress(
+                                    phase=UpdatePhase.DOWNLOADING,
+                                    progress=progress,
+                                    total_packages=total_snaps,
+                                    completed_packages=completed,
+                                    current_package=current_snap,
+                                )
+                            )
 
                     # Parse snap completion: "appname (channel) version from Publisher refreshed"
-                    refresh_match = re.match(r'^(\S+)\s+\([^)]+\)\s+(\S+)\s+from\s+.+\s+refreshed', line)
+                    refresh_match = re.match(
+                        r"^(\S+)\s+\([^)]+\)\s+(\S+)\s+from\s+.+\s+refreshed", line
+                    )
                     if refresh_match:
                         snap_name = refresh_match.group(1)
                         new_version = refresh_match.group(2)
@@ -313,22 +348,26 @@ class SnapUpdater:
                             completed += 1
                             current_snap = snap_name
                             old_version = old_versions.get(snap_name, "")
-                            packages.append(Package(
-                                name=snap_name,
-                                old_version=old_version,
-                                new_version=new_version,
-                                status="complete",
-                            ))
+                            packages.append(
+                                Package(
+                                    name=snap_name,
+                                    old_version=old_version,
+                                    new_version=new_version,
+                                    status="complete",
+                                )
+                            )
                             progress = completed / max(total_snaps, 1)
                             # Update last_progress_report for consistency
                             last_progress_report = max(last_progress_report, progress)
-                            report(UpdateProgress(
-                                phase=UpdatePhase.INSTALLING,
-                                progress=progress,
-                                total_packages=total_snaps,
-                                completed_packages=completed,
-                                current_package=snap_name,
-                            ))
+                            report(
+                                UpdateProgress(
+                                    phase=UpdatePhase.INSTALLING,
+                                    progress=progress,
+                                    total_packages=total_snaps,
+                                    completed_packages=completed,
+                                    current_package=snap_name,
+                                )
+                            )
 
             await self._process.wait()
 

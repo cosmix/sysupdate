@@ -17,7 +17,7 @@ class DownloadProgress:
 
     filename: str
     progress: float  # 0.0 to 1.0
-    speed: str  # Human-readable speed (e.g., "2.5MiB/s")
+    speed: str  # Human-readable speed (e.g., "2.5 MB/s")
     eta: str  # Human-readable ETA (e.g., "30s")
 
 

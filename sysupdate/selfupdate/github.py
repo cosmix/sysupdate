@@ -124,7 +124,9 @@ class GitHubClient:
             async with self._session.get(url) as response:
                 if response.status != 200:
                     if progress_callback:
-                        progress_callback(0.0, f"Download failed: HTTP {response.status}")
+                        progress_callback(
+                            0.0, f"Download failed: HTTP {response.status}"
+                        )
                     return False
 
                 total_size = int(response.headers.get("content-length", 0))

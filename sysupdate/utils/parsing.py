@@ -51,10 +51,7 @@ def parse_apt_output(output: str) -> list[Package]:
             # Remove architecture suffix like :amd64
             name = name.split(":")[0]
             packages[name] = Package(
-                name=name,
-                old_version=old_ver,
-                new_version=new_ver,
-                status="complete"
+                name=name, old_version=old_ver, new_version=new_ver, status="complete"
             )
             continue
 
@@ -65,9 +62,7 @@ def parse_apt_output(output: str) -> list[Package]:
             name = name.split(":")[0]
             if name not in packages:
                 packages[name] = Package(
-                    name=name,
-                    new_version=version,
-                    status="complete"
+                    name=name, new_version=version, status="complete"
                 )
 
     return list(packages.values())
@@ -108,10 +103,7 @@ def parse_flatpak_output(output: str) -> list[Package]:
             display_name = name.split(".")[-1] if "." in name else name
 
             packages[name] = Package(
-                name=display_name,
-                new_version=branch,
-                size=size,
-                status="complete"
+                name=display_name, new_version=branch, size=size, status="complete"
             )
             continue
 
@@ -121,10 +113,7 @@ def parse_flatpak_output(output: str) -> list[Package]:
             name = match.group(1)
             display_name = name.split(".")[-1] if "." in name else name
             if name not in packages:
-                packages[name] = Package(
-                    name=display_name,
-                    status="complete"
-                )
+                packages[name] = Package(name=display_name, status="complete")
 
     return list(packages.values())
 
@@ -360,11 +349,7 @@ def parse_dnf_check_output(output: str) -> list[Package]:
         if match:
             name, arch, version, repository = match.groups()
             # Store with original name (without arch), version is new_version
-            packages[name] = Package(
-                name=name,
-                new_version=version,
-                status="pending"
-            )
+            packages[name] = Package(name=name, new_version=version, status="pending")
 
     return list(packages.values())
 

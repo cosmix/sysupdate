@@ -12,7 +12,14 @@ from .binary import (
     get_expected_asset_name,
     replace_binary,
 )
-from .github import GITHUB_API_BASE, REPO_NAME, REPO_OWNER, GitHubClient, Release, ReleaseAsset
+from .github import (
+    GITHUB_API_BASE,
+    REPO_NAME,
+    REPO_OWNER,
+    GitHubClient,
+    Release,
+    ReleaseAsset,
+)
 from .updater import SelfUpdater, UpdateCheckResult, UpdateResult
 
 __all__ = [
@@ -77,6 +84,11 @@ async def run_self_update(check_only: bool = False) -> int:
     if check_only:
         console.print("\n[cyan]Run without --check-only to install the update.[/cyan]")
         return 0
+
+    # Guard against None release (should never happen due to update_available check)
+    if check_result.release is None:
+        console.print("[red]Error:[/red] No release information available")
+        return 1
 
     # Perform update with progress bar
     console.print("\n[cyan]Installing update...[/cyan]")

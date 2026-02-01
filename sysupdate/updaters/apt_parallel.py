@@ -54,11 +54,13 @@ async def run_parallel_apt_update(
 
     try:
         # Phase 1: apt update (0% - 10%)
-        report(UpdateProgress(
-            phase=UpdatePhase.CHECKING,
-            progress=0.0,
-            message="Updating package lists...",
-        ))
+        report(
+            UpdateProgress(
+                phase=UpdatePhase.CHECKING,
+                progress=0.0,
+                message="Updating package lists...",
+            )
+        )
 
         checking_progress_callback = create_scaled_callback(
             report,
@@ -74,11 +76,13 @@ async def run_parallel_apt_update(
             return result
 
         # Phase 2: Get upgradable packages using AptCacheWrapper
-        report(UpdateProgress(
-            phase=UpdatePhase.CHECKING,
-            progress=checking_end,  # 10%
-            message="Analyzing packages...",
-        ))
+        report(
+            UpdateProgress(
+                phase=UpdatePhase.CHECKING,
+                progress=checking_end,  # 10%
+                message="Analyzing packages...",
+            )
+        )
 
         try:
             cache = AptCacheWrapper()
@@ -93,11 +97,13 @@ async def run_parallel_apt_update(
             # No packages to update
             result.success = True
             result.packages = []
-            report(UpdateProgress(
-                phase=UpdatePhase.COMPLETE,
-                progress=1.0,
-                message="Already up to date",
-            ))
+            report(
+                UpdateProgress(
+                    phase=UpdatePhase.COMPLETE,
+                    progress=1.0,
+                    message="Already up to date",
+                )
+            )
             result.end_time = datetime.now()
             return result
 
@@ -113,24 +119,28 @@ async def run_parallel_apt_update(
             ]
             result.packages = packages
             result.success = True
-            report(UpdateProgress(
-                phase=UpdatePhase.COMPLETE,
-                progress=1.0,
-                completed_packages=len(packages),
-                total_packages=len(packages),
-            ))
+            report(
+                UpdateProgress(
+                    phase=UpdatePhase.COMPLETE,
+                    progress=1.0,
+                    completed_packages=len(packages),
+                    total_packages=len(packages),
+                )
+            )
             result.end_time = datetime.now()
             return result
 
         # Phase 3: Download packages in parallel (10% - 50%)
         total_packages = len(package_infos)
-        report(UpdateProgress(
-            phase=UpdatePhase.DOWNLOADING,
-            progress=download_start,  # Start at 10%
-            message=f"Downloading {total_packages} packages in parallel...",
-            total_packages=total_packages,
-            completed_packages=0,
-        ))
+        report(
+            UpdateProgress(
+                phase=UpdatePhase.DOWNLOADING,
+                progress=download_start,  # Start at 10%
+                message=f"Downloading {total_packages} packages in parallel...",
+                total_packages=total_packages,
+                completed_packages=0,
+            )
+        )
 
         downloader = Aria2Downloader()
 
@@ -141,15 +151,17 @@ async def run_parallel_apt_update(
             raw_pct = progress_info.progress  # 0.0 to 1.0 from aria2
             download_range = download_end - download_start  # 0.4
             scaled_pct = download_start + (raw_pct * download_range)  # 0.1 to 0.5
-            report(UpdateProgress(
-                phase=UpdatePhase.DOWNLOADING,
-                progress=scaled_pct,
-                completed_packages=int(raw_pct * total_packages),
-                total_packages=total_packages,
-                current_package=progress_info.filename or "",
-                speed=progress_info.speed,
-                eta=progress_info.eta,
-            ))
+            report(
+                UpdateProgress(
+                    phase=UpdatePhase.DOWNLOADING,
+                    progress=scaled_pct,
+                    completed_packages=int(raw_pct * total_packages),
+                    total_packages=total_packages,
+                    current_package=progress_info.filename or "",
+                    speed=progress_info.speed,
+                    eta=progress_info.eta,
+                )
+            )
 
         download_success = await downloader.download_packages(
             package_infos,
@@ -164,13 +176,15 @@ async def run_parallel_apt_update(
             return await run_sequential_update(callback, dry_run)
 
         # Phase 4: Install downloaded packages (50% - 100%)
-        report(UpdateProgress(
-            phase=UpdatePhase.INSTALLING,
-            message="Installing downloaded packages...",
-            progress=install_start,  # Start at 50%
-            total_packages=total_packages,
-            completed_packages=0,
-        ))
+        report(
+            UpdateProgress(
+                phase=UpdatePhase.INSTALLING,
+                message="Installing downloaded packages...",
+                progress=install_start,  # Start at 50%
+                total_packages=total_packages,
+                completed_packages=0,
+            )
+        )
 
         install_progress_callback = create_scaled_callback(
             report,
@@ -186,10 +200,12 @@ async def run_parallel_apt_update(
         if not install_success:
             result.error_message = install_error
             result.success = False
-            report(UpdateProgress(
-                phase=UpdatePhase.ERROR,
-                message=install_error,
-            ))
+            report(
+                UpdateProgress(
+                    phase=UpdatePhase.ERROR,
+                    message=install_error,
+                )
+            )
         else:
             # Convert PackageInfo to Package
             packages = [
@@ -202,21 +218,25 @@ async def run_parallel_apt_update(
             ]
             result.packages = packages
             result.success = True
-            report(UpdateProgress(
-                phase=UpdatePhase.COMPLETE,
-                progress=1.0,
-                completed_packages=total_packages,
-                total_packages=total_packages,
-            ))
+            report(
+                UpdateProgress(
+                    phase=UpdatePhase.COMPLETE,
+                    progress=1.0,
+                    completed_packages=total_packages,
+                    total_packages=total_packages,
+                )
+            )
 
     except Exception as e:
         result.error_message = str(e)
         if logger:
             logger.log(f"Error in parallel update: {e}")
-        report(UpdateProgress(
-            phase=UpdatePhase.ERROR,
-            message=str(e),
-        ))
+        report(
+            UpdateProgress(
+                phase=UpdatePhase.ERROR,
+                message=str(e),
+            )
+        )
 
     result.end_time = datetime.now()
     return result

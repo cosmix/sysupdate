@@ -18,7 +18,11 @@ from .aria2_downloader import Aria2Downloader
 from .apt_parallel import run_parallel_apt_update
 from ..utils import command_available
 from ..utils.logging import UpdateLogger
-from ..utils.parsing import parse_apt_output, AptUpgradeProgressTracker, AptUpdateProgressTracker
+from ..utils.parsing import (
+    parse_apt_output,
+    AptUpgradeProgressTracker,
+    AptUpdateProgressTracker,
+)
 
 
 class AptUpdater:
@@ -42,7 +46,9 @@ class AptUpdater:
         try:
             # Run apt update first
             proc = await asyncio.create_subprocess_exec(
-                "sudo", "apt", "update",
+                "sudo",
+                "apt",
+                "update",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -50,7 +56,9 @@ class AptUpdater:
 
             # Then check upgradable packages
             proc = await asyncio.create_subprocess_exec(
-                "apt", "list", "--upgradable",
+                "apt",
+                "list",
+                "--upgradable",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -62,15 +70,16 @@ class AptUpdater:
                     continue
                 # Format: package/source version arch [upgradable from: old_version]
                 match = re.match(
-                    r"(\S+)/\S+\s+(\S+)\s+\S+\s+\[upgradable from:\s+(\S+)\]",
-                    line
+                    r"(\S+)/\S+\s+(\S+)\s+\S+\s+\[upgradable from:\s+(\S+)\]", line
                 )
                 if match:
-                    packages.append(Package(
-                        name=match.group(1),
-                        new_version=match.group(2),
-                        old_version=match.group(3),
-                    ))
+                    packages.append(
+                        Package(
+                            name=match.group(1),
+                            new_version=match.group(2),
+                            old_version=match.group(3),
+                        )
+                    )
 
         except FileNotFoundError:
             return []  # Package manager not installed
@@ -124,11 +133,13 @@ class AptUpdater:
 
         try:
             # Phase 1: apt update (0% - 10%)
-            report(UpdateProgress(
-                phase=UpdatePhase.CHECKING,
-                progress=0.0,
-                message="Refreshing package lists",
-            ))
+            report(
+                UpdateProgress(
+                    phase=UpdatePhase.CHECKING,
+                    progress=0.0,
+                    message="Refreshing package lists",
+                )
+            )
 
             checking_callback = create_scaled_callback(
                 report,
@@ -144,23 +155,27 @@ class AptUpdater:
                 return result
 
             # Phase 2: apt full-upgrade (10% - 100%)
-            report(UpdateProgress(
-                phase=UpdatePhase.DOWNLOADING,
-                progress=checking_end,  # Start at 10%
-                message="Downloading and installing updates...",
-            ))
+            report(
+                UpdateProgress(
+                    phase=UpdatePhase.DOWNLOADING,
+                    progress=checking_end,  # Start at 10%
+                    message="Downloading and installing updates...",
+                )
+            )
 
             if dry_run:
                 # Just simulate
                 packages = await self.check_updates()
                 result.packages = packages
                 result.success = True
-                report(UpdateProgress(
-                    phase=UpdatePhase.COMPLETE,
-                    progress=1.0,
-                    completed_packages=len(packages),
-                    total_packages=len(packages),
-                ))
+                report(
+                    UpdateProgress(
+                        phase=UpdatePhase.COMPLETE,
+                        progress=1.0,
+                        completed_packages=len(packages),
+                        total_packages=len(packages),
+                    )
+                )
             else:
                 upgrade_callback = create_scaled_callback(
                     report,
@@ -175,24 +190,30 @@ class AptUpdater:
                 result.error_message = error
 
                 if success:
-                    report(UpdateProgress(
-                        phase=UpdatePhase.COMPLETE,
-                        progress=1.0,
-                        completed_packages=len(packages),
-                        total_packages=len(packages),
-                    ))
+                    report(
+                        UpdateProgress(
+                            phase=UpdatePhase.COMPLETE,
+                            progress=1.0,
+                            completed_packages=len(packages),
+                            total_packages=len(packages),
+                        )
+                    )
                 else:
-                    report(UpdateProgress(
-                        phase=UpdatePhase.ERROR,
-                        message=error,
-                    ))
+                    report(
+                        UpdateProgress(
+                            phase=UpdatePhase.ERROR,
+                            message=error,
+                        )
+                    )
 
         except Exception as e:
             result.error_message = str(e)
-            report(UpdateProgress(
-                phase=UpdatePhase.ERROR,
-                message=str(e),
-            ))
+            report(
+                UpdateProgress(
+                    phase=UpdatePhase.ERROR,
+                    message=str(e),
+                )
+            )
 
         finally:
             if self._logger:
@@ -240,7 +261,11 @@ class AptUpdater:
             env["DEBIAN_FRONTEND"] = "noninteractive"
 
             self._process = await asyncio.create_subprocess_exec(
-                "sudo", "apt-get", "-y", "--no-download", "dist-upgrade",
+                "sudo",
+                "apt-get",
+                "-y",
+                "--no-download",
+                "dist-upgrade",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
                 env=env,
@@ -265,13 +290,15 @@ class AptUpdater:
                     match = re.search(r"Setting up\s+(\S+)", decoded)
                     pkg_name = match.group(1).split(":")[0] if match else ""
                     progress = completed / total_packages if total_packages > 0 else 0.0
-                    report(UpdateProgress(
-                        phase=UpdatePhase.INSTALLING,
-                        progress=progress,
-                        completed_packages=completed,
-                        total_packages=total_packages,
-                        current_package=pkg_name,
-                    ))
+                    report(
+                        UpdateProgress(
+                            phase=UpdatePhase.INSTALLING,
+                            progress=progress,
+                            completed_packages=completed,
+                            total_packages=total_packages,
+                            current_package=pkg_name,
+                        )
+                    )
 
             await self._process.wait()
 
@@ -289,7 +316,9 @@ class AptUpdater:
         """Run apt update command with progress tracking."""
         try:
             self._process = await asyncio.create_subprocess_exec(
-                "sudo", "apt", "update",
+                "sudo",
+                "apt",
+                "update",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
             )
@@ -321,18 +350,26 @@ class AptUpdater:
                         msg = "Checking for upgrades"
                     else:
                         msg = "Refreshing package lists"
-                    report(UpdateProgress(
-                        phase=UpdatePhase.CHECKING,
-                        progress=progress,
-                        message=msg,
-                    ))
+                    report(
+                        UpdateProgress(
+                            phase=UpdatePhase.CHECKING,
+                            progress=progress,
+                            message=msg,
+                        )
+                    )
                 elif "Hit:" in decoded or "Get:" in decoded:
                     # Fallback for lines that don't advance progress
-                    msg = "Syncing package sources" if "Hit:" in decoded else "Fetching package lists"
-                    report(UpdateProgress(
-                        phase=UpdatePhase.CHECKING,
-                        message=msg,
-                    ))
+                    msg = (
+                        "Syncing package sources"
+                        if "Hit:" in decoded
+                        else "Fetching package lists"
+                    )
+                    report(
+                        UpdateProgress(
+                            phase=UpdatePhase.CHECKING,
+                            message=msg,
+                        )
+                    )
 
             await self._process.wait()
             return self._process.returncode == 0
@@ -360,7 +397,10 @@ class AptUpdater:
             env["DEBIAN_FRONTEND"] = "noninteractive"
 
             self._process = await asyncio.create_subprocess_exec(
-                "sudo", "apt-get", "full-upgrade", "-y",
+                "sudo",
+                "apt-get",
+                "full-upgrade",
+                "-y",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
                 env=env,
@@ -389,15 +429,21 @@ class AptUpdater:
                         "installing": UpdatePhase.INSTALLING,
                         "complete": UpdatePhase.COMPLETE,
                     }
-                    phase = phase_map.get(progress_info.get("phase", ""), UpdatePhase.DOWNLOADING)
-                    report(UpdateProgress(
-                        phase=phase,
-                        progress=progress_info.get("progress", 0.0),
-                        total_packages=progress_info.get("total_packages", 0),
-                        completed_packages=progress_info.get("completed_packages", 0),
-                        current_package=progress_info.get("current_package", ""),
-                        message=progress_info.get("message", ""),
-                    ))
+                    phase = phase_map.get(
+                        progress_info.get("phase", ""), UpdatePhase.DOWNLOADING
+                    )
+                    report(
+                        UpdateProgress(
+                            phase=phase,
+                            progress=progress_info.get("progress", 0.0),
+                            total_packages=progress_info.get("total_packages", 0),
+                            completed_packages=progress_info.get(
+                                "completed_packages", 0
+                            ),
+                            current_package=progress_info.get("current_package", ""),
+                            message=progress_info.get("message", ""),
+                        )
+                    )
 
                     # Handle early exit for "up to date"
                     if tracker.is_up_to_date:

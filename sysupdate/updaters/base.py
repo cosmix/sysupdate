@@ -8,6 +8,7 @@ from datetime import datetime
 
 class UpdatePhase(Enum):
     """Phases of the update process."""
+
     IDLE = "idle"
     CHECKING = "checking"
     DOWNLOADING = "downloading"
@@ -19,6 +20,7 @@ class UpdatePhase(Enum):
 @dataclass
 class Package:
     """Represents a package being updated."""
+
     name: str
     old_version: str = ""
     new_version: str = ""
@@ -34,6 +36,7 @@ class Package:
 @dataclass
 class UpdateProgress:
     """Progress information for an update operation."""
+
     phase: UpdatePhase = UpdatePhase.IDLE
     progress: float = 0.0  # 0.0 to 1.0
     total_packages: int = 0
@@ -47,6 +50,7 @@ class UpdateProgress:
 @dataclass
 class UpdateResult:
     """Result of an update operation."""
+
     success: bool
     packages: list[Package] = field(default_factory=list)
     error_message: str = ""
@@ -76,23 +80,29 @@ def create_scaled_callback(
     Returns:
         A new callback that scales the progress values.
     """
+
     def scaled(update: UpdateProgress) -> None:
         if callback is None:
             return
         if phases_to_scale is None or update.phase in phases_to_scale:
-            scaled_progress = scale_start + (update.progress * (scale_end - scale_start))
-            callback(UpdateProgress(
-                phase=update.phase,
-                progress=scaled_progress,
-                total_packages=update.total_packages,
-                completed_packages=update.completed_packages,
-                current_package=update.current_package,
-                message=update.message,
-                speed=update.speed,
-                eta=update.eta,
-            ))
+            scaled_progress = scale_start + (
+                update.progress * (scale_end - scale_start)
+            )
+            callback(
+                UpdateProgress(
+                    phase=update.phase,
+                    progress=scaled_progress,
+                    total_packages=update.total_packages,
+                    completed_packages=update.completed_packages,
+                    current_package=update.current_package,
+                    message=update.message,
+                    speed=update.speed,
+                    eta=update.eta,
+                )
+            )
         else:
             callback(update)
+
     return scaled
 
 
