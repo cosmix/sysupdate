@@ -8,7 +8,6 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from .apt_cache import PackageInfo, APT_ARCHIVES_DIR, APT_PARTIAL_DIR
-from ..utils import command_available
 
 
 @dataclass
@@ -49,6 +48,8 @@ class Aria2Downloader:
         Returns:
             True if aria2c is available, False otherwise.
         """
+        from ..utils import command_available
+
         return await command_available("aria2c", "--version")
 
     async def download_packages(

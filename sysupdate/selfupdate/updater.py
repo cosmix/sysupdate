@@ -10,8 +10,6 @@ from typing import Callable
 
 from packaging.version import InvalidVersion, Version
 
-logger = logging.getLogger(__name__)
-
 from .binary import (
     get_architecture,
     get_binary_path,
@@ -20,6 +18,8 @@ from .binary import (
 )
 from .checksum import compute_sha256, parse_sha256sums, verify_checksum
 from .github import GitHubClient, Release
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
