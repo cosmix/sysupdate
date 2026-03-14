@@ -110,7 +110,7 @@ _On Fedora, APT is replaced with DNF. On Arch, it's replaced with Pacman._
 
 ## Log Files
 
-Logs are saved to `/tmp/update_logs/`:
+Logs are saved to `/var/log/sysupdate/` when running as root, or `~/.local/state/sysupdate/logs/` for non-root users:
 
 ```text
 sysupdate_YYYYMMDD_HHMMSS_main.log

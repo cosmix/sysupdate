@@ -69,7 +69,7 @@ All updaters (APT, Flatpak, Snap) implement UpdaterProtocol:
 - async run_update(callback, dry_run) - Execute update with progress reporting
 
 Instance state in all updaters:
-- _logger: UpdateLogger - Logs to /tmp/update_logs/
+- _logger: UpdateLogger - Logs to /var/log/sysupdate/ (root) or ~/.local/state/sysupdate/logs/ (non-root)
 - _process: asyncio.subprocess.Process - Active subprocess reference
 
 ## Subprocess Handling Pattern
