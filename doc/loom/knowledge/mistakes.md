@@ -16,6 +16,10 @@
 ### Decisions
 
 - **Used PropertyMock pattern for Console.encoding tests because Rich Console.encoding is a read-only property**
-  - *Rationale:* Standard patch.object doesn't work on properties without setters
+  - _Rationale:_ Standard patch.object doesn't work on properties without setters
 
+## DNF test mock ordering bug (integration-verify, 2026-03-14)
 
+**What happened:** test_run_update_progress_callback had 4 entries in mock side_effect but only 3 subprocess calls are made by \_do_upgrade(). The duplicate mock_check_proc caused wrong mocks to be used for \_get_current_versions and upgrade process.
+**Why:** Comment said "First check in run_update, Second check in \_run_dnf_upgrade" but BaseUpdater.run_update() doesn't call check_updates() for non-dry-run — it delegates directly to \_do_upgrade().
+**How to avoid:** Count actual subprocess calls in the code path being tested before setting up side_effect lists. Also set `process.kill = MagicMock()` (not AsyncMock) since Process.kill() is synchronous.
