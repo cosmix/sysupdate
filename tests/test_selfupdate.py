@@ -169,31 +169,35 @@ class TestBinaryPathDetection:
             with pytest.raises(RuntimeError, match="does not exist"):
                 get_binary_path()
 
-    def test_get_binary_path_from_parent_process(self):
+    def test_get_binary_path_from_parent_process(self, tmp_path):
         """Test get_binary_path detects sysupdate from parent process."""
         from sysupdate.selfupdate.binary import get_binary_path
 
-        # Mock scenario: parent process is the PyApp binary named 'sysupdate'
-        mock_path = Path("/usr/local/bin/sysupdate")
+        # Create a fake /proc/{ppid}/exe target
+        mock_binary = tmp_path / "sysupdate"
+        mock_binary.write_bytes(b"mock binary")
 
         with patch("os.getppid", return_value=12345):
-            with patch.object(Path, "resolve", return_value=mock_path):
-                with patch.object(Path, "name", new_callable=lambda: property(lambda s: "sysupdate")):
-                    # This test verifies the parent process check path
-                    # The actual implementation reads /proc/{ppid}/exe
-                    pass  # Complex to mock /proc filesystem
+            with patch.object(
+                Path,
+                "resolve",
+                return_value=mock_binary,
+            ):
+                result = get_binary_path()
+                assert result == mock_binary
 
-    def test_get_binary_path_from_sys_executable(self):
+    def test_get_binary_path_from_sys_executable(self, tmp_path):
         """Test get_binary_path falls back to sys.executable."""
         from sysupdate.selfupdate.binary import get_binary_path
 
-        # Create a temp binary to test with
-        with patch("os.getppid", return_value=1):  # init process
+        mock_binary = tmp_path / "sysupdate"
+        mock_binary.write_bytes(b"mock binary")
+
+        with patch("os.getppid", return_value=1):
             with patch.object(Path, "resolve", side_effect=OSError("No such file")):
-                with patch("sys.executable", "/usr/bin/sysupdate"):
-                    # When parent process check fails and sys.executable is 'sysupdate'
-                    # it should return that path
-                    pass
+                with patch("sys.executable", str(mock_binary)):
+                    result = get_binary_path()
+                    assert result == mock_binary
 
     def test_get_binary_path_from_which(self, tmp_path):
         """Test get_binary_path falls back to shutil.which."""
@@ -318,7 +322,7 @@ class TestGitHubClient:
         assert len(release.assets) == 2
         assert release.prerelease is False
 
-    @pytest.mark.asyncio
+
     async def test_github_client_context_manager(self):
         """Test GitHubClient works as async context manager."""
         async with GitHubClient(timeout=30.0) as client:
@@ -374,7 +378,7 @@ class TestGitHubClient:
         mock_response.content.iter_chunked = mock_iter_chunked
         return mock_response
 
-    @pytest.mark.asyncio
+
     async def test_get_latest_release_success(self):
         """Test get_latest_release with successful response."""
         mock_response_data = {
@@ -414,7 +418,7 @@ class TestGitHubClient:
             assert len(release.assets) == 2
             assert release.assets[0].name == "sysupdate-linux-x86_64"
 
-    @pytest.mark.asyncio
+
     async def test_get_latest_release_strips_v_prefix(self):
         """Test get_latest_release strips 'v' prefix from version."""
         mock_response_data = {
@@ -438,7 +442,7 @@ class TestGitHubClient:
             assert release.version == "3.0.0"
             assert release.tag_name == "v3.0.0"
 
-    @pytest.mark.asyncio
+
     async def test_get_latest_release_not_found(self):
         """Test get_latest_release with 404 returns None."""
         with patch("aiohttp.ClientSession") as mock_session_class:
@@ -457,7 +461,7 @@ class TestGitHubClient:
 
             assert release is None
 
-    @pytest.mark.asyncio
+
     async def test_get_latest_release_network_error(self):
         """Test get_latest_release handles network errors."""
         import aiohttp
@@ -477,7 +481,7 @@ class TestGitHubClient:
 
             assert release is None
 
-    @pytest.mark.asyncio
+
     async def test_get_latest_release_timeout(self):
         """Test get_latest_release handles timeout."""
         with patch("aiohttp.ClientSession") as mock_session_class:
@@ -493,7 +497,7 @@ class TestGitHubClient:
 
             assert release is None
 
-    @pytest.mark.asyncio
+
     async def test_get_latest_release_requires_context_manager(self):
         """Test get_latest_release requires context manager."""
         client = GitHubClient()
@@ -503,7 +507,7 @@ class TestGitHubClient:
 
         assert "must be used as async context manager" in str(exc_info.value)
 
-    @pytest.mark.asyncio
+
     async def test_download_asset_success(self, tmp_path):
         """Test download_asset successful download."""
         dest_file = tmp_path / "download" / "binary"
@@ -539,7 +543,7 @@ class TestGitHubClient:
             assert len(progress_calls) > 0
             assert progress_calls[-1][0] == 100.0
 
-    @pytest.mark.asyncio
+
     async def test_download_asset_http_error(self, tmp_path):
         """Test download_asset handles HTTP errors."""
         dest_file = tmp_path / "binary"
@@ -565,7 +569,7 @@ class TestGitHubClient:
             assert success is False
             assert not dest_file.exists()
 
-    @pytest.mark.asyncio
+
     async def test_download_asset_creates_parent_dir(self, tmp_path):
         """Test download_asset creates parent directories."""
         dest_file = tmp_path / "subdir" / "nested" / "binary"
@@ -590,7 +594,7 @@ class TestGitHubClient:
             assert dest_file.parent.exists()
             assert dest_file.exists()
 
-    @pytest.mark.asyncio
+
     async def test_download_text_success(self):
         """Test download_text successful text retrieval."""
         expected_text = "This is text content"
@@ -608,7 +612,7 @@ class TestGitHubClient:
 
             assert text == expected_text
 
-    @pytest.mark.asyncio
+
     async def test_download_text_http_error(self):
         """Test download_text raises on HTTP error."""
         import aiohttp
@@ -758,7 +762,7 @@ class TestSelfUpdaterE2E:
         mock_session.close = AsyncMock()
         return mock_session
 
-    @pytest.mark.asyncio
+
     async def test_perform_update_full_flow_x86_64(self, tmp_path, mock_release):
         """Test complete update flow with mocked network on x86_64."""
         from sysupdate.selfupdate.updater import SelfUpdater
@@ -824,7 +828,7 @@ class TestSelfUpdaterE2E:
         assert len(progress_messages) > 0
         assert progress_messages[-1][1] == 100.0
 
-    @pytest.mark.asyncio
+
     async def test_perform_update_cross_filesystem(self, tmp_path, mock_release):
         """Test update when temp directory is on different filesystem."""
         from sysupdate.selfupdate.updater import SelfUpdater
@@ -855,7 +859,7 @@ class TestSelfUpdaterE2E:
         assert result.success, f"Update failed: {result.error_message}"
         assert current_binary.read_bytes() == new_binary_content
 
-    @pytest.mark.asyncio
+
     async def test_perform_update_checksum_mismatch_fails(self, tmp_path, mock_release):
         """Test that update fails when checksum doesn't match."""
         from sysupdate.selfupdate.updater import SelfUpdater
@@ -889,7 +893,7 @@ class TestSelfUpdaterE2E:
         # Original binary should be unchanged
         assert current_binary.read_bytes() == original_content
 
-    @pytest.mark.asyncio
+
     async def test_perform_update_binary_not_replaced_on_download_failure(
         self, tmp_path, mock_release
     ):
@@ -906,8 +910,6 @@ class TestSelfUpdaterE2E:
                 with patch("aiohttp.ClientSession") as mock_session_class:
                     mock_session = MagicMock()
                     mock_session_class.return_value = mock_session
-
-                    call_count = 0
 
                     def create_mock_response(url):
                         mock_resp = AsyncMock()
@@ -947,7 +949,7 @@ class TestSelfUpdaterE2E:
         # Original should be unchanged
         assert current_binary.read_bytes() == original_content
 
-    @pytest.mark.asyncio
+
     async def test_perform_update_tempdir_cleanup_doesnt_affect_result(
         self, tmp_path, mock_release
     ):
@@ -988,15 +990,13 @@ class TestSelfUpdaterE2E:
 class TestBinaryReplacement:
     """E2E tests for binary replacement functionality."""
 
-    @pytest.mark.asyncio
+
     async def test_replace_binary_same_filesystem(self, tmp_path):
         """Test replacing binary when both files are on same filesystem."""
         # Create "current" binary
         current_binary = tmp_path / "sysupdate"
         current_binary.write_bytes(b"old binary content version 1.0")
         current_binary.chmod(0o755)
-        original_content = current_binary.read_bytes()
-
         # Create "new" binary in same tmp_path (same filesystem)
         new_binary = tmp_path / "new" / "sysupdate-linux-x86_64"
         new_binary.parent.mkdir(parents=True)
@@ -1014,7 +1014,7 @@ class TestBinaryReplacement:
         # Backup should be cleaned up
         assert not current_binary.with_suffix(".bak").exists()
 
-    @pytest.mark.asyncio
+
     async def test_replace_binary_cross_filesystem(self, tmp_path):
         """Test replacing binary when new binary is in /tmp (potentially different fs)."""
         import tempfile
@@ -1038,7 +1038,7 @@ class TestBinaryReplacement:
             assert current_binary.exists()
             assert current_binary.read_bytes() == new_content
 
-    @pytest.mark.asyncio
+
     async def test_replace_binary_preserves_executable(self, tmp_path):
         """Test that replaced binary remains executable."""
         current_binary = tmp_path / "sysupdate"
@@ -1055,7 +1055,7 @@ class TestBinaryReplacement:
         mode = current_binary.stat().st_mode
         assert mode & 0o111, "Binary should be executable"
 
-    @pytest.mark.asyncio
+
     async def test_replace_binary_restores_on_failure(self, tmp_path):
         """Test that original binary is restored if new binary doesn't exist."""
         current_binary = tmp_path / "sysupdate"
@@ -1074,7 +1074,7 @@ class TestBinaryReplacement:
         assert current_binary.exists()
         assert current_binary.read_bytes() == original_content
 
-    @pytest.mark.asyncio
+
     async def test_replace_binary_with_different_sizes(self, tmp_path):
         """Test replacement works correctly with different file sizes."""
         current_binary = tmp_path / "sysupdate"
@@ -1093,7 +1093,7 @@ class TestBinaryReplacement:
         assert current_binary.read_bytes() == new_content
         assert current_binary.stat().st_size == 10000
 
-    @pytest.mark.asyncio
+
     async def test_replace_binary_backup_cleanup(self, tmp_path):
         """Test that backup file is properly cleaned up after successful replacement."""
         current_binary = tmp_path / "sysupdate"

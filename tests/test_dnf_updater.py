@@ -15,7 +15,7 @@ class TestDnfUpdater:
         """Create a DnfUpdater instance."""
         return DnfUpdater()
 
-    @pytest.mark.asyncio
+
     async def test_check_available_dnf5_preferred(self, updater):
         """Test that dnf5 is preferred when both dnf and dnf5 exist."""
         with patch("asyncio.create_subprocess_exec") as mock_exec:
@@ -29,7 +29,7 @@ class TestDnfUpdater:
             assert result is True
             assert updater._dnf_command == "dnf5"
 
-    @pytest.mark.asyncio
+
     async def test_check_available_dnf4_fallback(self, updater):
         """Test fallback to dnf when dnf5 doesn't exist."""
         with patch("asyncio.create_subprocess_exec") as mock_exec:
@@ -48,7 +48,7 @@ class TestDnfUpdater:
             assert result is True
             assert updater._dnf_command == "dnf"
 
-    @pytest.mark.asyncio
+
     async def test_check_available_none(self, updater):
         """Test returns False when neither dnf5 nor dnf exists."""
         with patch("asyncio.create_subprocess_exec") as mock_exec:
@@ -61,7 +61,7 @@ class TestDnfUpdater:
 
             assert result is False
 
-    @pytest.mark.asyncio
+
     async def test_check_available_exception(self, updater):
         """Test check_available handles exceptions gracefully."""
         with patch("asyncio.create_subprocess_exec") as mock_exec:
@@ -71,7 +71,7 @@ class TestDnfUpdater:
 
             assert result is False
 
-    @pytest.mark.asyncio
+
     async def test_check_updates_parses_output(self, updater, dnf_check_update_output):
         """Test that check_updates correctly parses dnf check-update output."""
         with patch("asyncio.create_subprocess_exec") as mock_exec:
@@ -92,7 +92,7 @@ class TestDnfUpdater:
             assert "python3.x86_64" in package_names
             assert "vim-minimal.x86_64" in package_names
 
-    @pytest.mark.asyncio
+
     async def test_check_updates_extracts_versions(self, updater, dnf_check_update_output):
         """Test that package versions are correctly extracted."""
         with patch("asyncio.create_subprocess_exec") as mock_exec:
@@ -110,7 +110,7 @@ class TestDnfUpdater:
             assert kernel is not None
             assert kernel.new_version == "6.6.9-200.fc39"
 
-    @pytest.mark.asyncio
+
     async def test_check_updates_empty(self, updater, dnf_no_updates_output):
         """Test handling when no updates are available."""
         with patch("asyncio.create_subprocess_exec") as mock_exec:
@@ -125,7 +125,7 @@ class TestDnfUpdater:
 
             assert len(packages) == 0
 
-    @pytest.mark.asyncio
+
     async def test_check_updates_handles_error(self, updater):
         """Test that check_updates handles subprocess errors gracefully."""
         with patch("asyncio.create_subprocess_exec") as mock_exec:
@@ -138,7 +138,7 @@ class TestDnfUpdater:
 
             assert len(packages) == 0
 
-    @pytest.mark.asyncio
+
     async def test_run_update_dry_run(self, updater, dnf_check_update_output):
         """Test dry run doesn't execute actual upgrade."""
         progress_updates = []
@@ -164,7 +164,7 @@ class TestDnfUpdater:
             # In dry run, only one subprocess call (check-update) should happen
             assert mock_exec.call_count == 1
 
-    @pytest.mark.asyncio
+
     async def test_run_update_progress_callback(self, updater, dnf_upgrade_output):
         """Test that progress is reported through phases during update."""
         progress_updates = []
@@ -214,7 +214,7 @@ class TestDnfUpdater:
             # Verify we went through CHECKING phase
             assert any(p.phase == UpdatePhase.CHECKING for p in progress_updates)
 
-    @pytest.mark.asyncio
+
     async def test_run_update_no_updates_available(self, updater, dnf_no_updates_output):
         """Test run_update when there are no updates available."""
         progress_updates = []
@@ -239,12 +239,12 @@ class TestDnfUpdater:
             # Should reach COMPLETE phase
             assert any(p.phase == UpdatePhase.COMPLETE for p in progress_updates)
 
-    @pytest.mark.asyncio
+
     async def test_name_attribute(self, updater):
         """Test that the updater has the correct name."""
         assert updater.name == "DNF Packages"
 
-    @pytest.mark.asyncio
+
     async def test_get_current_versions(self, updater, dnf_list_installed_output):
         """Test _get_current_versions parses installed package versions."""
         with patch("asyncio.create_subprocess_exec") as mock_exec:
@@ -262,7 +262,7 @@ class TestDnfUpdater:
             assert "kernel.x86_64" in versions
             assert versions["kernel.x86_64"] == "6.5.0-100.fc39"
 
-    @pytest.mark.asyncio
+
     async def test_check_updates_skips_metadata_lines(self, updater):
         """Test that metadata lines are skipped in check-update output."""
         output = """Last metadata expiration check: 0:15:42 ago on Thu Jan 11 10:00:00 2024.

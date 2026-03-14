@@ -78,7 +78,7 @@ class TestAptUpdater:
         """Create an AptUpdater instance."""
         return AptUpdater()
 
-    @pytest.mark.asyncio
+
     async def test_check_available_true(self, updater):
         """Test check_available when apt exists."""
         with patch("asyncio.create_subprocess_exec") as mock_exec:
@@ -90,7 +90,7 @@ class TestAptUpdater:
             result = await updater.check_available()
             assert result is True
 
-    @pytest.mark.asyncio
+
     async def test_check_available_false(self, updater):
         """Test check_available when apt doesn't exist."""
         with patch("asyncio.create_subprocess_exec") as mock_exec:
@@ -102,7 +102,7 @@ class TestAptUpdater:
             result = await updater.check_available()
             assert result is False
 
-    @pytest.mark.asyncio
+
     async def test_check_available_exception(self, updater):
         """Test check_available handles exceptions."""
         with patch("asyncio.create_subprocess_exec") as mock_exec:
@@ -111,7 +111,7 @@ class TestAptUpdater:
             result = await updater.check_available()
             assert result is False
 
-    @pytest.mark.asyncio
+
     async def test_check_updates(self, updater):
         """Test check_updates returns package list."""
         apt_list_output = b"""
@@ -137,7 +137,7 @@ openssl/jammy-updates 3.0.13-0ubuntu1 amd64 [upgradable from: 3.0.11-0ubuntu1]
             assert any(p.name == "libssl3" for p in packages)
             assert any(p.name == "openssl" for p in packages)
 
-    @pytest.mark.asyncio
+
     async def test_dry_run_mode(self, updater):
         """Test dry run doesn't actually install."""
         apt_list_output = b"libssl3/jammy-updates 3.0.13 amd64 [upgradable from: 3.0.11]\n"
@@ -179,7 +179,7 @@ class TestFlatpakUpdater:
         """Create a FlatpakUpdater instance."""
         return FlatpakUpdater()
 
-    @pytest.mark.asyncio
+
     async def test_check_available_true(self, updater):
         """Test check_available when flatpak exists."""
         with patch("asyncio.create_subprocess_exec") as mock_exec:
@@ -191,7 +191,7 @@ class TestFlatpakUpdater:
             result = await updater.check_available()
             assert result is True
 
-    @pytest.mark.asyncio
+
     async def test_check_available_false(self, updater):
         """Test check_available when flatpak doesn't exist."""
         with patch("asyncio.create_subprocess_exec") as mock_exec:
@@ -203,7 +203,7 @@ class TestFlatpakUpdater:
             result = await updater.check_available()
             assert result is False
 
-    @pytest.mark.asyncio
+
     async def test_check_updates(self, updater):
         """Test check_updates returns app list."""
         flatpak_list_output = b"""org.mozilla.firefox\tstable\t
@@ -221,7 +221,7 @@ org.gimp.GIMP\tstable\t
             assert any(p.name == "firefox" for p in packages)
             assert any(p.name == "GIMP" for p in packages)
 
-    @pytest.mark.asyncio
+
     async def test_check_updates_filters_runtimes(self, updater):
         """Test that runtimes and extensions are filtered."""
         flatpak_list_output = b"""org.mozilla.firefox\tstable\t
@@ -239,7 +239,7 @@ org.gnome.Platform.Locale\t45\t
             assert len(packages) == 1
             assert packages[0].name == "firefox"
 
-    @pytest.mark.asyncio
+
     async def test_dry_run_mode(self, updater):
         """Test dry run doesn't actually update."""
         flatpak_list_output = b"org.mozilla.firefox\tstable\t\n"
@@ -270,7 +270,7 @@ class TestSnapUpdater:
         """Create a SnapUpdater instance."""
         return SnapUpdater()
 
-    @pytest.mark.asyncio
+
     async def test_check_available_true(self, updater):
         """Test check_available when snap exists."""
         with patch("asyncio.create_subprocess_exec") as mock_exec:
@@ -282,7 +282,7 @@ class TestSnapUpdater:
             result = await updater.check_available()
             assert result is True
 
-    @pytest.mark.asyncio
+
     async def test_check_available_false(self, updater):
         """Test check_available when snap doesn't exist."""
         with patch("asyncio.create_subprocess_exec") as mock_exec:
@@ -294,7 +294,7 @@ class TestSnapUpdater:
             result = await updater.check_available()
             assert result is False
 
-    @pytest.mark.asyncio
+
     async def test_check_updates(self, updater):
         """Test check_updates parses snap refresh --list output."""
         snap_list_output = b"""Name                  Version    Rev    Size    Publisher        Notes
@@ -315,7 +315,7 @@ spotify               1.2.31     71     181MB   spotify          -
             assert any(p.name == "vlc" for p in packages)
             assert any(p.name == "spotify" for p in packages)
 
-    @pytest.mark.asyncio
+
     async def test_check_updates_filters_system_snaps(self, updater):
         """Test that system snaps are filtered out."""
         snap_list_output = b"""Name                  Version    Rev    Size    Publisher        Notes
@@ -337,7 +337,7 @@ gtk-common-themes     0.1-81     1535   64MB    canonical        -
             assert len(packages) == 1
             assert packages[0].name == "firefox"
 
-    @pytest.mark.asyncio
+
     async def test_dry_run_mode(self, updater):
         """Test dry run doesn't actually update."""
         snap_list_output = b"""Name      Version    Rev    Size    Publisher   Notes
@@ -361,7 +361,7 @@ firefox   125.0.1    4432   279MB   mozilla     -
             assert result.success is True
             assert any(p.phase == UpdatePhase.COMPLETE for p in progress_updates)
 
-    @pytest.mark.asyncio
+
     async def test_no_updates_available(self, updater):
         """Test handling when no updates are available."""
         snap_list_output = b"All snaps up to date.\n"
@@ -384,7 +384,7 @@ class TestPacmanUpdater:
         """Create a PacmanUpdater instance."""
         return PacmanUpdater()
 
-    @pytest.mark.asyncio
+
     async def test_check_available_true(self, updater):
         """Test check_available when pacman exists."""
         with patch("asyncio.create_subprocess_exec") as mock_exec:
@@ -396,7 +396,7 @@ class TestPacmanUpdater:
             result = await updater.check_available()
             assert result is True
 
-    @pytest.mark.asyncio
+
     async def test_check_available_false(self, updater):
         """Test check_available when pacman doesn't exist."""
         with patch("asyncio.create_subprocess_exec") as mock_exec:
@@ -408,7 +408,7 @@ class TestPacmanUpdater:
             result = await updater.check_available()
             assert result is False
 
-    @pytest.mark.asyncio
+
     async def test_check_updates_checkupdates_format(self, updater):
         """Test check_updates parses checkupdates output format."""
         checkupdates_output = b"""linux 6.7.0-1 -> 6.7.1-1
@@ -431,7 +431,7 @@ python 3.11.7-1 -> 3.11.8-1
                 assert linux_pkg.old_version == "6.7.0-1"
                 assert linux_pkg.new_version == "6.7.1-1"
 
-    @pytest.mark.asyncio
+
     async def test_check_updates_pacman_qu_format(self, updater):
         """Test check_updates parses pacman -Qu output format."""
         pacman_output = b"""linux 6.7.1-1
@@ -451,7 +451,7 @@ firefox 122.0.1-1
                 assert len(packages) == 2
                 assert any(p.name == "linux" and p.new_version == "6.7.1-1" for p in packages)
 
-    @pytest.mark.asyncio
+
     async def test_check_updates_empty(self, updater):
         """Test handling when no updates are available."""
         with patch("sysupdate.updaters.pacman.command_available") as mock_avail:
@@ -466,7 +466,7 @@ firefox 122.0.1-1
                 packages = await updater.check_updates()
                 assert len(packages) == 0
 
-    @pytest.mark.asyncio
+
     async def test_dry_run_mode(self, updater):
         """Test dry run doesn't actually update."""
         checkupdates_output = b"firefox 122.0-1 -> 122.0.1-1\n"
@@ -491,7 +491,7 @@ firefox 122.0.1-1
                 assert result.success is True
                 assert any(p.phase == UpdatePhase.COMPLETE for p in progress_updates)
 
-    @pytest.mark.asyncio
+
     async def test_get_current_versions(self, updater):
         """Test _get_current_versions parses pacman -Q output."""
         pacman_q_output = b"""linux 6.7.0-1

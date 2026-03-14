@@ -1,7 +1,6 @@
 """Pytest configuration and fixtures."""
 
 import pytest
-from unittest.mock import AsyncMock
 
 
 @pytest.fixture(autouse=True)
@@ -12,17 +11,6 @@ def clear_availability_cache():
     yield
     _availability_cache.clear()
 
-
-@pytest.fixture
-def mock_subprocess():
-    """Create a mock subprocess for testing."""
-    mock_proc = AsyncMock()
-    mock_proc.returncode = 0
-    mock_proc.stdout = AsyncMock()
-    mock_proc.stdout.readline = AsyncMock(return_value=b"")
-    mock_proc.wait = AsyncMock()
-    mock_proc.communicate = AsyncMock(return_value=(b"", b""))
-    return mock_proc
 
 
 @pytest.fixture

@@ -1,7 +1,6 @@
 """Integration tests for the main application."""
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 from rich.console import Console
 
 from sysupdate.app import SysUpdateCLI, UpdaterConfig
@@ -91,7 +90,7 @@ class TestCLIIntegration:
                 return cfg
         raise ValueError(f"No updater with label {label}")
 
-    @pytest.mark.asyncio
+
     async def test_run_updates_checks_availability(self):
         """Test that _run_updates checks if all updaters are available."""
         with patch('sysupdate.app.setup_logging'), \
@@ -113,7 +112,7 @@ class TestCLIIntegration:
             # Should return success even if nothing to update
             assert result == 0
 
-    @pytest.mark.asyncio
+
     async def test_run_updates_apt_only(self):
         """Test updates when only APT is available."""
         with patch('sysupdate.app.setup_logging'), \
@@ -142,7 +141,7 @@ class TestCLIIntegration:
             apt_cfg = self._get_updater_by_label(cli, "APT")
             apt_cfg.updater.run_update.assert_called_once()
 
-    @pytest.mark.asyncio
+
     async def test_run_updates_flatpak_only(self):
         """Test updates when only Flatpak is available."""
         with patch('sysupdate.app.setup_logging'), \
@@ -168,7 +167,7 @@ class TestCLIIntegration:
             flatpak_cfg = self._get_updater_by_label(cli, "Flatpak")
             flatpak_cfg.updater.run_update.assert_called_once()
 
-    @pytest.mark.asyncio
+
     async def test_run_updates_concurrent_execution(self):
         """Test that APT and Flatpak updates run concurrently."""
         with patch('sysupdate.app.setup_logging'), \
@@ -195,7 +194,7 @@ class TestCLIIntegration:
             self._get_updater_by_label(cli, "APT").updater.run_update.assert_called_once()
             self._get_updater_by_label(cli, "Flatpak").updater.run_update.assert_called_once()
 
-    @pytest.mark.asyncio
+
     async def test_run_updates_handles_exceptions(self):
         """Test that exceptions in one updater don't stop the other but result in failure exit code."""
         with patch('sysupdate.app.setup_logging'), \
@@ -226,7 +225,7 @@ class TestCLIIntegration:
             # Should return failure exit code due to APT exception
             assert result == 1
 
-    @pytest.mark.asyncio
+
     async def test_run_updates_passes_dry_run(self):
         """Test that dry_run flag is passed to updaters."""
         with patch('sysupdate.app.setup_logging'), \
@@ -339,7 +338,7 @@ class TestASCIIFallback:
 class TestExitCodes:
     """Tests for exit code behavior."""
 
-    @pytest.mark.asyncio
+
     async def test_exit_code_zero_on_success(self):
         """Test that successful updates return exit code 0."""
         with patch('sysupdate.app.setup_logging'), \
@@ -361,7 +360,7 @@ class TestExitCodes:
 
             assert result == 0
 
-    @pytest.mark.asyncio
+
     async def test_exit_code_one_on_updater_failure(self):
         """Test that failed update returns exit code 1."""
         with patch('sysupdate.app.setup_logging'), \
