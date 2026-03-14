@@ -160,22 +160,14 @@ class TestBinaryPathDetection:
                         result = get_binary_path()
                         assert result == mock_binary
 
-    def test_get_binary_path_from_pyapp_env_var_nonexistent_path(self, tmp_path):
-        """Test get_binary_path falls back when PYAPP points to nonexistent file."""
+    def test_get_binary_path_from_pyapp_env_var_nonexistent_path(self):
+        """Test get_binary_path raises when PYAPP points to nonexistent file."""
         from sysupdate.selfupdate.binary import get_binary_path
 
-        # Create a mock binary for PATH fallback
-        mock_binary = tmp_path / "sysupdate"
-        mock_binary.write_bytes(b"mock binary")
-        mock_binary.chmod(0o755)
-
-        # PYAPP points to nonexistent file
+        # PYAPP points to nonexistent file with valid name - should raise
         with patch.dict(os.environ, {"PYAPP": "/nonexistent/sysupdate"}):
-            with patch("sysupdate.selfupdate.binary.os.getppid", return_value=1):
-                with patch("sys.executable", "/usr/bin/python3"):
-                    with patch("shutil.which", return_value=str(mock_binary)):
-                        result = get_binary_path()
-                        assert result == mock_binary
+            with pytest.raises(RuntimeError, match="does not exist"):
+                get_binary_path()
 
     def test_get_binary_path_from_parent_process(self):
         """Test get_binary_path detects sysupdate from parent process."""
@@ -335,6 +327,53 @@ class TestGitHubClient:
         # Session should be closed after exit
         assert client._session is None
 
+    @staticmethod
+    def _make_json_response(data: dict, status: int = 200) -> AsyncMock:
+        """Create a mock response that serves JSON via content.read()."""
+        import json as _json
+
+        mock_response = AsyncMock()
+        mock_response.status = status
+        raw_bytes = _json.dumps(data).encode("utf-8")
+        mock_response.headers = {"content-length": str(len(raw_bytes))}
+        mock_response.content = MagicMock()
+        mock_response.content.read = AsyncMock(return_value=raw_bytes)
+        mock_response.release = AsyncMock()
+        mock_response.request_info = MagicMock()
+        return mock_response
+
+    @staticmethod
+    def _make_text_response(text: str, status: int = 200) -> AsyncMock:
+        """Create a mock response that serves text via content.read()."""
+        mock_response = AsyncMock()
+        mock_response.status = status
+        raw_bytes = text.encode("utf-8")
+        mock_response.headers = {"content-length": str(len(raw_bytes))}
+        mock_response.content = MagicMock()
+        mock_response.content.read = AsyncMock(return_value=raw_bytes)
+        mock_response.raise_for_status = MagicMock()
+        mock_response.release = AsyncMock()
+        mock_response.request_info = MagicMock()
+        return mock_response
+
+    @staticmethod
+    def _make_binary_response(
+        content: bytes, status: int = 200
+    ) -> AsyncMock:
+        """Create a mock response that serves binary via content.iter_chunked()."""
+        mock_response = AsyncMock()
+        mock_response.status = status
+        mock_response.headers = {"content-length": str(len(content))}
+        mock_response.release = AsyncMock()
+        mock_response.request_info = MagicMock()
+
+        async def mock_iter_chunked(size):
+            yield content
+
+        mock_response.content = MagicMock()
+        mock_response.content.iter_chunked = mock_iter_chunked
+        return mock_response
+
     @pytest.mark.asyncio
     async def test_get_latest_release_success(self):
         """Test get_latest_release with successful response."""
@@ -360,16 +399,8 @@ class TestGitHubClient:
             mock_session = MagicMock()
             mock_session_class.return_value = mock_session
 
-            # Mock the response
-            mock_response = AsyncMock()
-            mock_response.status = 200
-            mock_response.json = AsyncMock(return_value=mock_response_data)
-
-            # Mock get() to return an async context manager
-            mock_get_cm = AsyncMock()
-            mock_get_cm.__aenter__.return_value = mock_response
-            mock_get_cm.__aexit__.return_value = None
-            mock_session.get.return_value = mock_get_cm
+            mock_response = self._make_json_response(mock_response_data)
+            mock_session.get = AsyncMock(return_value=mock_response)
             mock_session.close = AsyncMock()
 
             async with GitHubClient() as client:
@@ -397,14 +428,8 @@ class TestGitHubClient:
             mock_session = MagicMock()
             mock_session_class.return_value = mock_session
 
-            mock_response = AsyncMock()
-            mock_response.status = 200
-            mock_response.json = AsyncMock(return_value=mock_response_data)
-
-            mock_get_cm = AsyncMock()
-            mock_get_cm.__aenter__.return_value = mock_response
-            mock_get_cm.__aexit__.return_value = None
-            mock_session.get.return_value = mock_get_cm
+            mock_response = self._make_json_response(mock_response_data)
+            mock_session.get = AsyncMock(return_value=mock_response)
             mock_session.close = AsyncMock()
 
             async with GitHubClient() as client:
@@ -422,11 +447,9 @@ class TestGitHubClient:
 
             mock_response = AsyncMock()
             mock_response.status = 404
-
-            mock_get_cm = AsyncMock()
-            mock_get_cm.__aenter__.return_value = mock_response
-            mock_get_cm.__aexit__.return_value = None
-            mock_session.get.return_value = mock_get_cm
+            mock_response.release = AsyncMock()
+            mock_response.request_info = MagicMock()
+            mock_session.get = AsyncMock(return_value=mock_response)
             mock_session.close = AsyncMock()
 
             async with GitHubClient() as client:
@@ -443,8 +466,10 @@ class TestGitHubClient:
             mock_session = MagicMock()
             mock_session_class.return_value = mock_session
 
-            # Simulate network error
-            mock_session.get.side_effect = aiohttp.ClientError("Network error")
+            # Simulate network error on all retry attempts
+            mock_session.get = AsyncMock(
+                side_effect=aiohttp.ClientError("Network error")
+            )
             mock_session.close = AsyncMock()
 
             async with GitHubClient() as client:
@@ -459,8 +484,8 @@ class TestGitHubClient:
             mock_session = MagicMock()
             mock_session_class.return_value = mock_session
 
-            # Simulate timeout
-            mock_session.get.side_effect = asyncio.TimeoutError()
+            # Simulate timeout on all retry attempts
+            mock_session.get = AsyncMock(side_effect=asyncio.TimeoutError())
             mock_session.close = AsyncMock()
 
             async with GitHubClient() as client:
@@ -490,20 +515,8 @@ class TestGitHubClient:
             mock_session = MagicMock()
             mock_session_class.return_value = mock_session
 
-            mock_response = AsyncMock()
-            mock_response.status = 200
-            mock_response.headers = {"content-length": str(len(file_content))}
-
-            # Mock chunked reading
-            async def mock_iter_chunked(size):
-                yield file_content
-
-            mock_response.content.iter_chunked = mock_iter_chunked
-
-            mock_get_cm = AsyncMock()
-            mock_get_cm.__aenter__.return_value = mock_response
-            mock_get_cm.__aexit__.return_value = None
-            mock_session.get.return_value = mock_get_cm
+            mock_response = self._make_binary_response(file_content)
+            mock_session.get = AsyncMock(return_value=mock_response)
             mock_session.close = AsyncMock()
 
             progress_calls = []
@@ -535,13 +548,12 @@ class TestGitHubClient:
             mock_session = MagicMock()
             mock_session_class.return_value = mock_session
 
+            # Use a 403 (non-retryable 4xx) so retry doesn't interfere
             mock_response = AsyncMock()
-            mock_response.status = 500
-
-            mock_get_cm = AsyncMock()
-            mock_get_cm.__aenter__.return_value = mock_response
-            mock_get_cm.__aexit__.return_value = None
-            mock_session.get.return_value = mock_get_cm
+            mock_response.status = 403
+            mock_response.release = AsyncMock()
+            mock_response.request_info = MagicMock()
+            mock_session.get = AsyncMock(return_value=mock_response)
             mock_session.close = AsyncMock()
 
             async with GitHubClient() as client:
@@ -558,23 +570,14 @@ class TestGitHubClient:
         """Test download_asset creates parent directories."""
         dest_file = tmp_path / "subdir" / "nested" / "binary"
 
+        file_content = b"test"
+
         with patch("aiohttp.ClientSession") as mock_session_class:
             mock_session = MagicMock()
             mock_session_class.return_value = mock_session
 
-            mock_response = AsyncMock()
-            mock_response.status = 200
-            mock_response.headers = {"content-length": "10"}
-
-            async def mock_iter_chunked(size):
-                yield b"test"
-
-            mock_response.content.iter_chunked = mock_iter_chunked
-
-            mock_get_cm = AsyncMock()
-            mock_get_cm.__aenter__.return_value = mock_response
-            mock_get_cm.__aexit__.return_value = None
-            mock_session.get.return_value = mock_get_cm
+            mock_response = self._make_binary_response(file_content)
+            mock_session.get = AsyncMock(return_value=mock_response)
             mock_session.close = AsyncMock()
 
             async with GitHubClient() as client:
@@ -596,14 +599,8 @@ class TestGitHubClient:
             mock_session = MagicMock()
             mock_session_class.return_value = mock_session
 
-            mock_response = AsyncMock()
-            mock_response.raise_for_status = MagicMock()
-            mock_response.text = AsyncMock(return_value=expected_text)
-
-            mock_get_cm = AsyncMock()
-            mock_get_cm.__aenter__.return_value = mock_response
-            mock_get_cm.__aexit__.return_value = None
-            mock_session.get.return_value = mock_get_cm
+            mock_response = self._make_text_response(expected_text)
+            mock_session.get = AsyncMock(return_value=mock_response)
             mock_session.close = AsyncMock()
 
             async with GitHubClient() as client:
@@ -621,7 +618,7 @@ class TestGitHubClient:
             mock_session_class.return_value = mock_session
 
             mock_response = AsyncMock()
-
+            mock_response.status = 404
             mock_response.raise_for_status = MagicMock(
                 side_effect=aiohttp.ClientResponseError(
                     request_info=MagicMock(),
@@ -629,16 +626,67 @@ class TestGitHubClient:
                     status=404,
                 )
             )
-
-            mock_get_cm = AsyncMock()
-            mock_get_cm.__aenter__.return_value = mock_response
-            mock_get_cm.__aexit__.return_value = None
-            mock_session.get.return_value = mock_get_cm
+            mock_response.release = AsyncMock()
+            mock_response.request_info = MagicMock()
+            mock_session.get = AsyncMock(return_value=mock_response)
             mock_session.close = AsyncMock()
 
             async with GitHubClient() as client:
                 with pytest.raises(aiohttp.ClientError):
                     await client.download_text("https://example.com/text")
+
+
+class TestVersionComparison:
+    """Tests for SelfUpdater._is_newer_version version comparison logic."""
+
+    def setup_method(self):
+        """Create a SelfUpdater instance for version comparison tests."""
+        from sysupdate.selfupdate.updater import SelfUpdater
+
+        self.updater = SelfUpdater()
+
+    def test_newer_version_standard(self):
+        """Test that 2.0.0 is newer than 1.0.0."""
+        assert self.updater._is_newer_version("1.0.0", "2.0.0") is True
+
+    def test_same_version(self):
+        """Test that same version is not newer."""
+        assert self.updater._is_newer_version("1.0.0", "1.0.0") is False
+
+    def test_older_version(self):
+        """Test that older version is not newer."""
+        assert self.updater._is_newer_version("2.0.0", "1.0.0") is False
+
+    def test_newer_minor(self):
+        """Test that 1.1.0 is newer than 1.0.0."""
+        assert self.updater._is_newer_version("1.0.0", "1.1.0") is True
+
+    def test_newer_patch(self):
+        """Test that 1.0.1 is newer than 1.0.0."""
+        assert self.updater._is_newer_version("1.0.0", "1.0.1") is True
+
+    def test_prerelease_version(self):
+        """Test that stable 2.0.0 is newer than pre-release 2.0.0a1."""
+        assert self.updater._is_newer_version("2.0.0a1", "2.0.0") is True
+
+    def test_dev_version(self):
+        """Test that stable 2.0.0 is newer than dev version 2.0.0.dev1."""
+        assert self.updater._is_newer_version("2.0.0.dev1", "2.0.0") is True
+
+    def test_string_comparison_edge_case(self):
+        """Test that 10.0.0 is correctly detected as newer than 9.0.0.
+
+        This was the bug with bare string comparison where '9' > '1' in '10'.
+        """
+        assert self.updater._is_newer_version("9.0.0", "10.0.0") is True
+
+    def test_invalid_version_returns_false(self):
+        """Test that non-PEP-440 non-numeric versions return False."""
+        assert self.updater._is_newer_version("1.0.0", "abc") is False
+
+    def test_equal_version(self):
+        """Test that equal versions return False."""
+        assert self.updater._is_newer_version("3.2.1", "3.2.1") is False
 
 
 class TestSelfUpdaterE2E:
@@ -672,16 +720,25 @@ class TestSelfUpdaterE2E:
         )
 
     def _create_mock_session(self, sha256sums_content: str, new_binary_content: bytes):
-        """Helper to create a properly mocked aiohttp session."""
+        """Helper to create a properly mocked aiohttp session.
+
+        Now returns responses directly (not as context managers) since
+        _request_with_retry uses ``await session.get(url)`` directly.
+        """
         mock_session = MagicMock()
 
         def create_mock_response(url):
             mock_resp = AsyncMock()
             mock_resp.status = 200
+            mock_resp.release = AsyncMock()
+            mock_resp.request_info = MagicMock()
 
             if "SHA256SUMS" in url:
                 mock_resp.raise_for_status = MagicMock()
-                mock_resp.text = AsyncMock(return_value=sha256sums_content)
+                raw_bytes = sha256sums_content.encode("utf-8")
+                mock_resp.headers = {"content-length": str(len(raw_bytes))}
+                mock_resp.content = MagicMock()
+                mock_resp.content.read = AsyncMock(return_value=raw_bytes)
             else:
                 # Binary download
                 mock_resp.headers = {"content-length": str(len(new_binary_content))}
@@ -694,12 +751,8 @@ class TestSelfUpdaterE2E:
 
             return mock_resp
 
-        def mock_get(url):
-            # Return a context manager, not a coroutine
-            cm = MagicMock()
-            cm.__aenter__ = AsyncMock(return_value=create_mock_response(url))
-            cm.__aexit__ = AsyncMock(return_value=None)
-            return cm
+        async def mock_get(url):
+            return create_mock_response(url)
 
         mock_session.get = mock_get
         mock_session.close = AsyncMock()
@@ -854,24 +907,30 @@ class TestSelfUpdaterE2E:
                     mock_session = MagicMock()
                     mock_session_class.return_value = mock_session
 
+                    call_count = 0
+
                     def create_mock_response(url):
                         mock_resp = AsyncMock()
+                        mock_resp.release = AsyncMock()
+                        mock_resp.request_info = MagicMock()
 
                         if "SHA256SUMS" in url:
                             mock_resp.status = 200
                             mock_resp.raise_for_status = MagicMock()
-                            mock_resp.text = AsyncMock(return_value="hash  sysupdate-linux-x86_64\n")
+                            checksum_text = "hash  sysupdate-linux-x86_64\n"
+                            raw_bytes = checksum_text.encode("utf-8")
+                            mock_resp.headers = {"content-length": str(len(raw_bytes))}
+                            mock_resp.content = MagicMock()
+                            mock_resp.content.read = AsyncMock(return_value=raw_bytes)
                         else:
-                            # Binary download fails
-                            mock_resp.status = 500
+                            # Binary download fails with 403 (non-retryable)
+                            mock_resp.status = 403
+                            mock_resp.headers = {}
 
                         return mock_resp
 
-                    def mock_get(url):
-                        cm = MagicMock()
-                        cm.__aenter__ = AsyncMock(return_value=create_mock_response(url))
-                        cm.__aexit__ = AsyncMock(return_value=None)
-                        return cm
+                    async def mock_get(url):
+                        return create_mock_response(url)
 
                     mock_session.get = mock_get
                     mock_session.close = AsyncMock()

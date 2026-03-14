@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
 from packaging.version import InvalidVersion, Version
+
+logger = logging.getLogger(__name__)
 
 from .binary import (
     get_architecture,
@@ -92,7 +95,9 @@ class SelfUpdater:
     def _is_newer_version(self, current: str, latest: str) -> bool:
         """Compare version strings to determine if latest is newer.
 
-        Uses PEP 440 version comparison via packaging library.
+        Uses PEP 440 version comparison via packaging library. Falls back to
+        numeric dot-separated comparison if PEP 440 parsing fails. Returns
+        False for non-numeric version components to avoid unsafe comparisons.
 
         Args:
             current: Current version string
@@ -106,8 +111,48 @@ class SelfUpdater:
             latest_ver = Version(latest)
             return latest_ver > current_ver
         except InvalidVersion:
-            # If version parsing fails, do string comparison as fallback
-            return latest > current
+            return self._compare_dotted_versions(current, latest)
+
+    @staticmethod
+    def _compare_dotted_versions(current: str, latest: str) -> bool:
+        """Compare dot-separated version strings numerically.
+
+        Splits each version on dots and compares integer components.
+        Returns False if any component is non-numeric, logging a warning.
+
+        Args:
+            current: Current version string
+            latest: Latest available version string
+
+        Returns:
+            True if latest is newer than current, False otherwise
+        """
+        current_parts = current.split(".")
+        latest_parts = latest.split(".")
+
+        # Pad shorter version with zeros
+        max_len = max(len(current_parts), len(latest_parts))
+        current_parts.extend(["0"] * (max_len - len(current_parts)))
+        latest_parts.extend(["0"] * (max_len - len(latest_parts)))
+
+        for cur_part, lat_part in zip(current_parts, latest_parts):
+            try:
+                cur_num = int(cur_part)
+                lat_num = int(lat_part)
+            except ValueError:
+                logger.warning(
+                    "Cannot compare non-numeric version components: "
+                    "current=%r, latest=%r (parts: %r vs %r)",
+                    current, latest, cur_part, lat_part,
+                )
+                return False
+
+            if lat_num > cur_num:
+                return True
+            if lat_num < cur_num:
+                return False
+
+        return False
 
     async def perform_update(
         self,
@@ -171,7 +216,7 @@ class SelfUpdater:
             with tempfile.TemporaryDirectory() as tmpdir:
                 tmpdir_path = Path(tmpdir)
 
-                # Download SHA256SUMS.txt
+                # Download SHA256SUMS.txt and binary in a single session
                 if progress_callback:
                     progress_callback("Downloading checksums", 20.0)
 
@@ -180,33 +225,32 @@ class SelfUpdater:
                         checksums_asset.download_url
                     )
 
-                checksums = parse_sha256sums(checksums_text)
-                expected_hash = checksums.get(binary_asset.name)
+                    checksums = parse_sha256sums(checksums_text)
+                    expected_hash = checksums.get(binary_asset.name)
 
-                if expected_hash is None:
-                    return UpdateResult(
-                        success=False,
-                        old_version=current_version,
-                        new_version=release.version,
-                        error_message=(
-                            f"No checksum found for '{binary_asset.name}' "
-                            "in SHA256SUMS.txt"
-                        ),
-                    )
+                    if expected_hash is None:
+                        return UpdateResult(
+                            success=False,
+                            old_version=current_version,
+                            new_version=release.version,
+                            error_message=(
+                                f"No checksum found for '{binary_asset.name}' "
+                                "in SHA256SUMS.txt"
+                            ),
+                        )
 
-                # Download binary
-                if progress_callback:
-                    progress_callback("Downloading binary", 30.0)
-
-                new_binary_path = tmpdir_path / binary_asset.name
-
-                def download_progress(percent: float, message: str) -> None:
-                    """Map download progress to 30-70% range."""
+                    # Download binary
                     if progress_callback:
-                        mapped_percent = 30.0 + (percent * 0.4)
-                        progress_callback(f"Downloading: {message}", mapped_percent)
+                        progress_callback("Downloading binary", 30.0)
 
-                async with self._github_client as client:
+                    new_binary_path = tmpdir_path / binary_asset.name
+
+                    def download_progress(percent: float, message: str) -> None:
+                        """Map download progress to 30-70% range."""
+                        if progress_callback:
+                            mapped_percent = 30.0 + (percent * 0.4)
+                            progress_callback(f"Downloading: {message}", mapped_percent)
+
                     download_success = await client.download_asset(
                         binary_asset.download_url,
                         new_binary_path,

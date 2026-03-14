@@ -2,32 +2,61 @@
 
 from __future__ import annotations
 
+import io
 import logging
+import os
+import warnings
 from collections import deque
 from datetime import datetime
 from pathlib import Path
 from typing import TextIO
 
 
-LOG_DIR = Path("/tmp/update_logs")
+def _get_log_dir() -> Path:
+    """Get the appropriate log directory based on privileges.
+
+    Uses /var/log/sysupdate/ when running as root.
+    Falls back to XDG_STATE_HOME/sysupdate/logs/ for non-root.
+    """
+    if os.geteuid() == 0:
+        return Path("/var/log/sysupdate")
+
+    xdg_state = os.environ.get("XDG_STATE_HOME", "")
+    if xdg_state:
+        return Path(xdg_state) / "sysupdate" / "logs"
+
+    return Path.home() / ".local" / "state" / "sysupdate" / "logs"
 
 
 def get_log_path(suffix: str = "") -> Path:
-    """
-    Get path to a log file with timestamp.
+    """Get path to a log file with timestamp.
 
     Args:
         suffix: Optional suffix like 'apt' or 'flatpak'
 
     Returns:
         Path to log file
+
+    Raises:
+        RuntimeError: If the log directory path resolves through a symlink
+            to an unexpected location (potential symlink attack).
     """
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    log_dir = _get_log_dir()
+    log_dir.mkdir(parents=True, mode=0o750, exist_ok=True)
+
+    resolved = Path(os.path.realpath(log_dir))
+    if resolved != log_dir.resolve():
+        msg = (
+            f"Log directory symlink mismatch: "
+            f"expected {log_dir.resolve()}, got {resolved}"
+        )
+        raise RuntimeError(msg)
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"sysupdate_{timestamp}"
     if suffix:
         filename = f"{filename}_{suffix}"
-    return LOG_DIR / f"{filename}.log"
+    return log_dir / f"{filename}.log"
 
 
 def setup_logging(verbose: bool = False) -> logging.Logger:
@@ -69,23 +98,53 @@ def setup_logging(verbose: bool = False) -> logging.Logger:
 
 
 class UpdateLogger:
-    """Logger that captures update output for display and file logging."""
+    """Logger that captures update output for display and file logging.
+
+    Supports the context manager protocol for safe resource cleanup::
+
+        with UpdateLogger("apt") as logger:
+            logger.log("updating packages...")
+    """
 
     def __init__(self, name: str) -> None:
         self.name = name
         self.log_path = get_log_path(name.lower())
-        self._file: TextIO = open(self.log_path, "w")
-        self.lines: deque[str] = deque(maxlen=1000)  # Keep last 1000 lines in memory
+        fd = os.open(
+            str(self.log_path),
+            os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW,
+            0o640,
+        )
+        self._file: TextIO = io.open(fd, "w", closefd=True)
+        self.lines: deque[str] = deque(maxlen=1000)
+
+    def __enter__(self) -> UpdateLogger:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object,
+    ) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        if hasattr(self, "_file") and not self._file.closed:
+            warnings.warn(
+                f"UpdateLogger '{self.name}' was not properly closed. "
+                "Use 'with UpdateLogger(name) as logger:' or call logger.close().",
+                ResourceWarning,
+                stacklevel=2,
+            )
+            self.close()
 
     def log(self, line: str) -> None:
         """Log a line of output."""
-        # Write to file
         self._file.write(line + "\n")
-
-        # Keep in memory for display (deque automatically handles maxlen)
         self.lines.append(line)
 
     def close(self) -> None:
-        """Close the log file."""
-        self._file.flush()
-        self._file.close()
+        """Close the log file. Safe to call multiple times."""
+        if hasattr(self, "_file") and not self._file.closed:
+            self._file.flush()
+            self._file.close()
