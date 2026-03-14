@@ -1,24 +1,29 @@
 """Minimal CLI interface for System Update Manager using Rich."""
 
 import asyncio
-import re
 from dataclasses import dataclass
 from typing import Callable
 from rich.console import Console
 from rich.progress import (
     Progress,
-    ProgressColumn,
-    SpinnerColumn,
     TextColumn,
     BarColumn,
-    TaskProgressColumn,
+    TaskID,
     TimeElapsedColumn,
-    Task as RichTask,
 )
-from rich.table import Table
-from rich.text import Text
 
 from . import __version__
+from .ui import (
+    StatusColumn,
+    PhaseAwareProgressColumn,
+    SpeedColumn,
+    ETAColumn,
+    BAR_WIDTH,
+    DESC_WIDTH,
+    _MARKUP_PATTERN,
+    print_header,
+    print_summary,
+)
 from .updaters.base import (
     UpdatePhase,
     UpdateProgress,
@@ -35,28 +40,6 @@ from .updaters.aria2_downloader import Aria2Downloader
 from .utils.logging import setup_logging
 from .utils.aria2 import prompt_install_aria2
 
-# ============================================================================
-# Module-level constants
-# ============================================================================
-
-# Fixed width for description column (prefix + label + detail text)
-DESC_WIDTH = 30
-
-# Progress thresholds - fraction of progress bar reserved for checking phase
-CHECKING_PROGRESS_END = 0.1
-
-# Gradient colors for ASCII art header (cyan -> blue -> magenta)
-HEADER_COLORS = ["cyan", "dodger_blue2", "blue", "purple", "magenta"]
-
-# Logo width for centering version text under ASCII art header
-LOGO_WIDTH = 50
-
-# Progress bar width in characters
-BAR_WIDTH = 16
-
-# Precompiled pattern for stripping Rich markup tags
-_MARKUP_PATTERN = re.compile(r"\[(green|red|dim|/)\]")
-
 
 @dataclass
 class UpdaterConfig:
@@ -65,87 +48,6 @@ class UpdaterConfig:
     updater: UpdaterProtocol
     label: str
     max_pkg_len: int = 12
-
-
-class StatusColumn(SpinnerColumn):
-    """Status badge with phase-aware colors and ASCII fallback support."""
-
-    # Unicode phase symbols for terminals with full Unicode support
-    PHASE_STYLES: dict[str, tuple[str, str]] = {
-        "checking": ("dim", "○"),
-        "downloading": ("cyan", "↓"),
-        "installing": ("yellow", "⚙"),
-        "complete": ("green", "✓"),
-        "error": ("red", "✗"),
-    }
-
-    # ASCII fallback symbols for terminals without Unicode support
-    ASCII_PHASE_STYLES: dict[str, tuple[str, str]] = {
-        "checking": ("dim", "o"),
-        "downloading": ("cyan", "v"),
-        "installing": ("yellow", "*"),
-        "complete": ("green", "+"),
-        "error": ("red", "x"),
-    }
-
-    def __init__(self, *args, use_ascii: bool = False, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.use_ascii = use_ascii
-
-    def render(self, task: RichTask) -> Text:
-        styles = self.ASCII_PHASE_STYLES if self.use_ascii else self.PHASE_STYLES
-
-        if task.finished:
-            if task.fields.get("success", True):
-                symbol = "+" if self.use_ascii else "✓"
-                return Text(symbol, style="green")
-            symbol = "x" if self.use_ascii else "✗"
-            return Text(symbol, style="red")
-
-        phase = task.fields.get("phase", "checking")
-        default_symbol = "." if self.use_ascii else "●"
-        style, symbol = styles.get(phase, ("white", default_symbol))
-        return Text(symbol, style=style)
-
-
-class PhaseAwareProgressColumn(TaskProgressColumn):
-    """Task progress column that shows dim placeholder during indeterminate phase."""
-
-    def render(self, task: RichTask) -> Text:
-        # When total is None (indeterminate), show placeholder to maintain width
-        if task.total is None:
-            # Match width of "100%" (4 chars)
-            return Text("  - ", style="dim")
-        return super().render(task)
-
-
-class SpeedColumn(ProgressColumn):
-    """Shows download speed when available."""
-
-    def render(self, task: RichTask) -> Text:
-        speed = task.fields.get("speed", "")
-        if speed:
-            return Text(f"{speed:>10}", style="cyan")
-        return Text(" " * 10, style="dim")
-
-
-class ETAColumn(ProgressColumn):
-    """Shows ETA when available with fixed width."""
-
-    # Fixed width for ETA column (e.g., "ETA 10m30s" = 10 chars)
-    ETA_WIDTH = 10
-
-    def render(self, task: RichTask) -> Text:
-        eta = task.fields.get("eta", "")
-        if eta:
-            text = f"ETA {eta}"
-            # Pad or truncate to fixed width
-            if len(text) < self.ETA_WIDTH:
-                text = text + " " * (self.ETA_WIDTH - len(text))
-            elif len(text) > self.ETA_WIDTH:
-                text = text[: self.ETA_WIDTH]
-            return Text(text, style="dim")
-        return Text(" " * self.ETA_WIDTH, style="dim")
 
 
 class SysUpdateCLI:
@@ -181,48 +83,14 @@ class SysUpdateCLI:
             return 130
 
     def _print_header(self) -> None:
-        """Print gradient-colored ASCII art header."""
-        # Use regular strings with escaped backslashes to avoid raw string issues
-        lines = [
-            "                                 _       _       ",
-            "   ___ _   _ ___ _   _ _ __   __| | __ _| |_ ___ ",
-            "  / __| | | / __| | | | '_ \\ / _` |/ _` | __/ _ \\",
-            "  \\__ \\ |_| \\__ \\ |_| | |_) | (_| | (_| | ||  __/",
-            "  |___/\\__, |___/\\__,_| .__/ \\__,_|\\__,_|\\__\\___|",
-            "       |___/          |_|                        ",
-        ]
-
-        self.console.print()
-        for line in lines:
-            text = Text()
-            line_len = len(line)
-            for i, char in enumerate(line):
-                color_idx = int(i / line_len * len(HEADER_COLORS))
-                text.append(
-                    char,
-                    style=f"bold {HEADER_COLORS[min(color_idx, len(HEADER_COLORS) - 1)]}",
-                )
-            self.console.print(text)
-
-        # Version centered under the logo
-        version_str = f"v{__version__}"
-        padding = (LOGO_WIDTH - len(version_str)) // 2
-        version_text = Text()
-        version_text.append(" " * padding + version_str, style="dim")
-        self.console.print(version_text)
-
-        # Show dry-run indicator if in dry-run mode
-        if self.dry_run:
-            self.console.print()
-            self.console.print("   [dim][DRY RUN] No changes will be made[/]")
-
-        self.console.print()
+        """Print gradient-colored ASCII art header (delegates to ui module)."""
+        print_header(self.console, __version__, self.dry_run, self._use_ascii)
 
     def _format_desc(self, prefix: str, label: str, detail: str = "") -> str:
         """Format description with fixed width (truncate or pad as needed).
 
         Args:
-            prefix: Status indicator (e.g., "  " for spinner, "✓ " for complete)
+            prefix: Status indicator (e.g., "  " for spinner, "check " for complete)
             label: Main label (APT or Flatpak)
             detail: Optional detail text
         """
@@ -240,14 +108,14 @@ class SysUpdateCLI:
             return text + " " * (DESC_WIDTH - visible_len)
         elif visible_len > DESC_WIDTH:
             # Truncate visible text and rebuild with markup
-            truncated_visible = visible[: DESC_WIDTH - 1] + "…"
+            truncated_visible = visible[: DESC_WIDTH - 1] + "\u2026"
             return truncated_visible
         return text
 
     def _create_progress_callback(
         self,
         progress: Progress,
-        task_id,
+        task_id: TaskID,
         label: str,
         max_pkg_len: int = 12,
     ) -> Callable[[UpdateProgress], None]:
@@ -270,7 +138,7 @@ class SysUpdateCLI:
                     # Extract short status from message (limit to 25 chars)
                     msg = update.message.rstrip(".")
                     if len(msg) > 25:
-                        msg = msg[:24] + "…"
+                        msg = msg[:24] + "\u2026"
                     desc = self._format_desc("", f"{label} [dim]|[/] {msg}")
                 else:
                     desc = self._format_desc("", f"{label} [dim]|[/] checking")
@@ -398,7 +266,7 @@ class SysUpdateCLI:
     async def _run_updater(
         self,
         progress: Progress,
-        task_id,
+        task_id: TaskID,
         cfg: UpdaterConfig,
     ) -> UpdateResult:
         """Run an updater with progress tracking."""
@@ -422,102 +290,5 @@ class SysUpdateCLI:
         return result
 
     def _print_summary(self, results_by_label: dict[str, list[Package]]) -> None:
-        """Print minimal summary of updated packages."""
-        # Table display configuration per label
-        table_config = {
-            "APT": {
-                "title": "APT Packages",
-                "name_col": "Package",
-                "show_versions": True,
-            },
-            "Flatpak": {
-                "title": "Flatpak Apps",
-                "name_col": "App",
-                "show_versions": False,
-            },
-            "Snap": {"title": "Snap Apps", "name_col": "App", "show_versions": True},
-            "DNF": {
-                "title": "DNF Packages",
-                "name_col": "Package",
-                "show_versions": True,
-            },
-            "Pacman": {
-                "title": "Pacman Packages",
-                "name_col": "Package",
-                "show_versions": True,
-            },
-        }
-
-        # ASCII fallback symbols
-        line_char = "-" if self._use_ascii else "\u2500"
-        check_char = "+" if self._use_ascii else "\u2713"
-
-        total = sum(len(pkgs) for pkgs in results_by_label.values())
-        self.console.print("   [dim]" + line_char * 40 + "[/]")
-
-        if total == 0:
-            self.console.print()
-            self.console.print(f"   [green]{check_char}[/] System is up to date")
-            self.console.print()
-            return
-
-        # Count summary
-        parts = [
-            f"{len(pkgs)} {label}" for label, pkgs in results_by_label.items() if pkgs
-        ]
-        self.console.print()
-        self.console.print(
-            f"   [green]{check_char}[/] Updated [bold]{total}[/] packages ({', '.join(parts)})"
-        )
-        self.console.print()
-
-        # Print tables for each manager with updates
-        for label, packages in results_by_label.items():
-            if not packages:
-                continue
-
-            cfg = table_config.get(
-                label, {"title": label, "name_col": "Package", "show_versions": True}
-            )
-            self.console.print(f"   [bold]{cfg['title']}[/] [dim]({len(packages)})[/]")
-            self.console.print()
-            self._print_package_table(packages, cfg["name_col"], cfg["show_versions"])
-            self.console.print()
-
-        self.console.print("   [dim]" + line_char * 40 + "[/]")
-        self.console.print()
-
-    def _print_package_table(
-        self,
-        packages: list[Package],
-        name_col: str,
-        show_versions: bool,
-    ) -> None:
-        """Print a table of packages."""
-        # ASCII fallback for arrow symbol
-        arrow = "->" if self._use_ascii else "\u2192"
-
-        table = Table(
-            show_header=True,
-            header_style="dim",
-            box=None,
-            padding=(0, 3),
-            collapse_padding=True,
-        )
-        table.add_column(name_col, style="white")
-
-        if show_versions:
-            table.add_column("Old", style="dim", justify="right")
-            table.add_column("", style="dim", justify="center", width=3)
-            table.add_column("New", style="white", justify="left")
-            for pkg in packages:
-                old_ver = pkg.old_version or "-"
-                new_ver = pkg.new_version or "-"
-                table.add_row(pkg.name, old_ver, arrow, new_ver)
-        else:
-            table.add_column("Branch", style="dim", justify="right")
-            for pkg in packages:
-                branch = pkg.new_version or pkg.old_version or "stable"
-                table.add_row(pkg.name, branch)
-
-        self.console.print(table)
+        """Print minimal summary of updated packages (delegates to ui module)."""
+        print_summary(self.console, results_by_label, self._use_ascii)
