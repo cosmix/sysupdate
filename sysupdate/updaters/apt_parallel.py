@@ -1,6 +1,7 @@
 """Parallel APT update implementation using aria2c."""
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 
 from .base import (
@@ -17,9 +18,13 @@ from ..utils.logging import UpdateLogger
 
 
 async def run_parallel_apt_update(
-    run_apt_update,
-    run_apt_install_from_cache,
-    run_sequential_update,
+    run_apt_update: Callable[[ProgressCallback], Awaitable[bool]],
+    run_apt_install_from_cache: Callable[
+        [ProgressCallback, int], Awaitable[tuple[bool, str]]
+    ],
+    run_sequential_update: Callable[
+        [ProgressCallback | None, bool], Awaitable[UpdateResult]
+    ],
     callback: ProgressCallback | None = None,
     dry_run: bool = False,
     logger: UpdateLogger | None = None,

@@ -12,16 +12,11 @@ if TYPE_CHECKING:
 # FLATPAK_SKIP_PATTERNS will be imported from flatpak module when needed
 
 
-# Precompiled regex patterns for performance
+# Precompiled regex patterns shared by APT output parsing
 _UNPACK_PATTERN = re.compile(r"Unpacking\s+(\S+)\s+\(([^)]+)\)\s+over\s+\(([^)]+)\)")
 _SETUP_PATTERN = re.compile(r"Setting up\s+(\S+)\s+\(([^)]+)\)")
 _NUMBERED_PATTERN = re.compile(r"^\s*\d+\.\s+(\S+)\s+(\S+)(?:\s+(\S+))?")
 _ACTION_PATTERN = re.compile(r"(?:Installing|Updating)\s+(\S+)")
-_COUNT_PATTERN = re.compile(r"(\d+)\s+upgraded")
-_GET_PATTERN = re.compile(r"Get:(\d+)\s+\S+\s+(\S+)\s+")
-_UNPACK_SIMPLE_PATTERN = re.compile(r"Unpacking\s+(\S+)")
-_SETUP_SIMPLE_PATTERN = re.compile(r"Setting up\s+(\S+)")
-_TRIGGER_PATTERN = re.compile(r"Processing triggers for\s+(\S+)")
 
 
 def parse_apt_output(output: str) -> list[Package]:
@@ -39,7 +34,7 @@ def parse_apt_output(output: str) -> list[Package]:
         List of Package objects
     """
     # Import here to avoid circular dependency
-    from ..updaters.base import Package
+    from ..updaters.base import Package, PackageStatus
 
     packages: dict[str, Package] = {}
 
@@ -51,7 +46,10 @@ def parse_apt_output(output: str) -> list[Package]:
             # Remove architecture suffix like :amd64
             name = name.split(":")[0]
             packages[name] = Package(
-                name=name, old_version=old_ver, new_version=new_ver, status="complete"
+                name=name,
+                old_version=old_ver,
+                new_version=new_ver,
+                status=PackageStatus.COMPLETE,
             )
             continue
 
@@ -62,7 +60,9 @@ def parse_apt_output(output: str) -> list[Package]:
             name = name.split(":")[0]
             if name not in packages:
                 packages[name] = Package(
-                    name=name, new_version=version, status="complete"
+                    name=name,
+                    new_version=version,
+                    status=PackageStatus.COMPLETE,
                 )
 
     return list(packages.values())
@@ -83,7 +83,7 @@ def parse_flatpak_output(output: str) -> list[Package]:
         List of Package objects
     """
     # Import here to avoid circular dependency
-    from ..updaters.base import Package
+    from ..updaters.base import Package, PackageStatus
     from ..updaters.flatpak import FLATPAK_SKIP_PATTERNS
 
     packages: dict[str, Package] = {}
@@ -103,7 +103,10 @@ def parse_flatpak_output(output: str) -> list[Package]:
             display_name = name.split(".")[-1] if "." in name else name
 
             packages[name] = Package(
-                name=display_name, new_version=branch, size=size, status="complete"
+                name=display_name,
+                new_version=branch,
+                size=size,
+                status=PackageStatus.COMPLETE,
             )
             continue
 
@@ -113,437 +116,21 @@ def parse_flatpak_output(output: str) -> list[Package]:
             name = match.group(1)
             display_name = name.split(".")[-1] if "." in name else name
             if name not in packages:
-                packages[name] = Package(name=display_name, status="complete")
+                packages[name] = Package(
+                    name=display_name,
+                    status=PackageStatus.COMPLETE,
+                )
 
     return list(packages.values())
 
 
-class AptUpgradeProgressTracker:
-    """Tracks progress during apt upgrade by parsing output lines.
-
-    This class encapsulates the state and logic for tracking APT upgrade progress,
-    parsing lines to detect downloads, unpacking, and installation phases.
-
-    Progress is allocated as follows:
-    - Normal mode: Downloading 0-50%, Installing 50-100%
-    - Cache mode (no downloads): Unpacking 0-50%, Installing 50-100%
-
-    Handles edge cases:
-    - Unknown total: Uses estimation based on seen package count
-    - Cached packages: Detects when packages are installed from cache
-    """
-
-    def __init__(self) -> None:
-        """Initialize the progress tracker."""
-        self.total_packages = 0
-        self.download_count = 0
-        self.install_count = 0
-        self.unpack_count = 0
-        self.current_package = ""
-        self.last_progress = 0.0
-        self._is_up_to_date = False
-        self._pending_downloads: list[str] = []  # Track downloads before total known
-        self._using_cache = False  # True if packages come from cache (no downloads)
-        self._first_unpack_seen = False
-
-    def parse_line(self, line: str) -> dict | None:
-        """Parse a line of apt output and return progress info if applicable.
-
-        Args:
-            line: A single line of apt output.
-
-        Returns:
-            Dict with keys: phase, progress, current_package, total_packages,
-            completed_packages, message. Returns None if no progress update.
-        """
-        # Check for total package count from summary line
-        count_match = _COUNT_PATTERN.search(line)
-        if count_match:
-            new_total = int(count_match.group(1))
-            if new_total > 0:
-                self.total_packages = new_total
-                # If we had pending downloads, recalculate and report progress
-                if self._pending_downloads:
-                    self.download_count = len(self._pending_downloads)
-                    progress = (self.download_count / self.total_packages) * 0.5
-                    if progress > self.last_progress:
-                        self.last_progress = progress
-                        return {
-                            "phase": "downloading",
-                            "progress": progress,
-                            "current_package": self.current_package,
-                            "total_packages": self.total_packages,
-                            "completed_packages": self.download_count,
-                        }
-
-        # Check for "already up to date"
-        if "up to date" in line.lower():
-            self._is_up_to_date = True
-            return {
-                "phase": "complete",
-                "progress": 1.0,
-                "message": "Already up to date",
-            }
-
-        # Track download progress via Get: lines
-        get_match = _GET_PATTERN.match(line)
-        if get_match:
-            pkg_num = int(get_match.group(1))
-            self.download_count = pkg_num
-            self.current_package = get_match.group(2).split(":")[0]
-
-            if self.total_packages > 0:
-                progress = (self.download_count / self.total_packages) * 0.5
-                if progress > self.last_progress:
-                    self.last_progress = progress
-                    return {
-                        "phase": "downloading",
-                        "progress": progress,
-                        "current_package": self.current_package,
-                        "total_packages": self.total_packages,
-                        "completed_packages": self.download_count,
-                    }
-            else:
-                # Total not yet known - track and use estimated progress
-                self._pending_downloads.append(self.current_package)
-                # Conservative estimate: assume at least 2 more packages
-                estimated = max(pkg_num + 2, len(self._pending_downloads) + 2)
-                progress = (pkg_num / estimated) * 0.4  # Cap at 40% until total known
-                if progress > self.last_progress:
-                    self.last_progress = progress
-                    return {
-                        "phase": "downloading",
-                        "progress": progress,
-                        "current_package": self.current_package,
-                        "total_packages": 0,  # Unknown
-                        "completed_packages": pkg_num,
-                        "message": f"Downloading {self.current_package}...",
-                    }
-
-        # Track unpacking progress
-        unpack_match = _UNPACK_SIMPLE_PATTERN.search(line)
-        if unpack_match:
-            self.current_package = unpack_match.group(1).split(":")[0]
-            self.unpack_count += 1
-
-            if not self._first_unpack_seen:
-                self._first_unpack_seen = True
-                # If we never saw downloads but are unpacking, packages were cached
-                if self.download_count == 0 and self.total_packages > 0:
-                    self._using_cache = True
-                    # Start at 0% for unpacking phase in cache mode
-                    self.last_progress = 0.0
-
-            # Report unpacking progress if using cache
-            if self._using_cache and self.total_packages > 0:
-                # In cache mode: unpacking is 0-50%, setting up is 50-100%
-                progress = (self.unpack_count / self.total_packages) * 0.5
-                if progress > self.last_progress:
-                    self.last_progress = progress
-                    return {
-                        "phase": "installing",
-                        "progress": progress,
-                        "current_package": self.current_package,
-                        "total_packages": self.total_packages,
-                        "completed_packages": self.unpack_count,
-                        "message": f"Unpacking {self.current_package}...",
-                    }
-
-        # Track installation progress via Setting up lines
-        setup_match = _SETUP_SIMPLE_PATTERN.search(line)
-        if setup_match:
-            self.install_count += 1
-            self.current_package = setup_match.group(1).split(":")[0]
-
-            if self.total_packages > 0:
-                if self._using_cache:
-                    # Cache mode: unpacking 0-50%, setting up 50-100%
-                    progress = 0.5 + (self.install_count / self.total_packages) * 0.5
-                else:
-                    # Normal mode: downloading 0-50%, setting up 50-100%
-                    progress = 0.5 + (self.install_count / self.total_packages) * 0.5
-
-                if progress > self.last_progress:
-                    self.last_progress = progress
-                    return {
-                        "phase": "installing",
-                        "progress": progress,
-                        "current_package": self.current_package,
-                        "total_packages": self.total_packages,
-                        "completed_packages": self.install_count,
-                    }
-            elif self.install_count > 0:
-                # Total not known, but we're installing - estimate progress
-                estimated = max(self.install_count + 2, self.unpack_count)
-                progress = 0.5 + (self.install_count / estimated) * 0.4
-                if progress > self.last_progress:
-                    self.last_progress = progress
-                    return {
-                        "phase": "installing",
-                        "progress": progress,
-                        "current_package": self.current_package,
-                        "total_packages": 0,
-                        "completed_packages": self.install_count,
-                    }
-
-        # Track processing triggers
-        trigger_match = _TRIGGER_PATTERN.search(line)
-        if trigger_match:
-            self.current_package = trigger_match.group(1).split(":")[0]
-            progress = 0.95 + (self.install_count / max(self.total_packages, 1)) * 0.05
-            if progress > self.last_progress and progress <= 1.0:
-                self.last_progress = progress
-                return {
-                    "phase": "installing",
-                    "progress": min(progress, 0.99),
-                    "current_package": self.current_package,
-                    "total_packages": self.total_packages,
-                    "completed_packages": self.install_count,
-                    "message": "Processing triggers...",
-                }
-
-        return None
-
-    @property
-    def is_up_to_date(self) -> bool:
-        """Check if the system was already up to date."""
-        return self._is_up_to_date
-
-
-# DNF-specific regex patterns
-_DNF_PKG_PATTERN = re.compile(r"^(\S+)\.(\S+)\s+(\S+)\s+(\S+)")
-_DNF_DOWNLOAD_PATTERN = re.compile(r"\((\d+)/(\d+)\):\s+(\S+)")
-_DNF_UPGRADING_PATTERN = re.compile(r"^\s+Upgrading\s+:\s+(\S+)")
-_DNF_COMPLETED_LINE_PATTERN = re.compile(r"^(Upgraded|Installed):")
-
-
-def parse_dnf_check_output(output: str) -> list[Package]:
-    """
-    Parse DNF check-update output to extract package information.
-
-    Looks for patterns like:
-    - "package.arch    version    repository"
-
-    Args:
-        output: Raw DNF check-update output text
-
-    Returns:
-        List of Package objects
-    """
-    # Import here to avoid circular dependency
-    from ..updaters.base import Package
-
-    packages: dict[str, Package] = {}
-
-    for line in output.splitlines():
-        # Skip empty lines and metadata lines
-        if not line.strip() or line.startswith("Last metadata"):
-            continue
-
-        # Skip header separator lines
-        if line.strip().startswith("===") or line.strip().startswith("---"):
-            continue
-
-        # Check for package line format: package.arch version repository
-        match = _DNF_PKG_PATTERN.match(line)
-        if match:
-            name, arch, version, repository = match.groups()
-            # Store with original name (without arch), version is new_version
-            packages[name] = Package(name=name, new_version=version, status="pending")
-
-    return list(packages.values())
-
-
-class DnfUpgradeProgressTracker:
-    """Tracks progress during dnf upgrade by parsing output lines.
-
-    This class encapsulates the state and logic for tracking DNF upgrade progress,
-    parsing lines to detect downloads and installation phases.
-
-    Progress is allocated as follows:
-    - Downloading: 0-50%
-    - Installing: 50-100%
-
-    Handles edge cases:
-    - Unknown total: Uses estimation based on seen package count
-    - Multiple packages in transaction: Tracks progress through download/install phases
-    """
-
-    def __init__(self) -> None:
-        """Initialize the progress tracker."""
-        self.total_packages = 0
-        self.download_count = 0
-        self.install_count = 0
-        self.current_package = ""
-        self.last_progress = 0.0
-        self._in_download_phase = False
-        self._in_install_phase = False
-        self._download_total = 0
-
-    def parse_line(self, line: str) -> dict | None:
-        """Parse a line of dnf output and return progress info if applicable.
-
-        Args:
-            line: A single line of dnf output.
-
-        Returns:
-            Dict with keys: phase, progress, current_package, total_packages,
-            completed_packages, message. Returns None if no progress update.
-        """
-        # Check for "Downloading Packages:" header
-        if "Downloading Packages:" in line:
-            self._in_download_phase = True
-            return {
-                "phase": "downloading",
-                "progress": 0.0,
-                "current_package": "",
-                "total_packages": self.total_packages,
-                "completed_packages": 0,
-                "message": "Starting download...",
-            }
-
-        # Check for download progress: (1/5): package-name
-        download_match = _DNF_DOWNLOAD_PATTERN.search(line)
-        if download_match and self._in_download_phase:
-            current = int(download_match.group(1))
-            total = int(download_match.group(2))
-            pkg_name = download_match.group(3)
-
-            # Extract package name from filename (e.g., package-1.0.rpm -> package)
-            if pkg_name.endswith(".rpm"):
-                pkg_name = pkg_name[:-4]
-            # Remove version info - split on first dash if present
-            if "-" in pkg_name:
-                pkg_name = pkg_name.rsplit("-", 2)[0]
-
-            self.download_count = current
-            self._download_total = total
-            self.total_packages = total
-            self.current_package = pkg_name
-
-            # Progress: downloading is 0-50%
-            progress = (current / total) * 0.5
-            if progress > self.last_progress:
-                self.last_progress = progress
-                return {
-                    "phase": "downloading",
-                    "progress": progress,
-                    "current_package": self.current_package,
-                    "total_packages": self.total_packages,
-                    "completed_packages": current,
-                }
-
-        # Check for install/upgrade phase - only "Running transaction", not "Upgrading"
-        # (Upgrading appears in transaction summary before downloads)
-        if "Running transaction" in line:
-            if not self._in_install_phase:
-                self._in_install_phase = True
-                # If we never tracked downloads, start at 50%
-                if self.last_progress < 0.5:
-                    self.last_progress = 0.5
-                return {
-                    "phase": "installing",
-                    "progress": 0.5,
-                    "current_package": "",
-                    "total_packages": self.total_packages,
-                    "completed_packages": 0,
-                    "message": "Installing packages...",
-                }
-
-        # Track individual package upgrades during transaction
-        # Format: "  Upgrading        : package-version.arch                          N/M"
-        upgrading_match = _DNF_UPGRADING_PATTERN.search(line)
-        if upgrading_match and self._in_install_phase:
-            pkg_name = upgrading_match.group(1)
-            # Remove version info from package name
-            if "-" in pkg_name:
-                pkg_name = pkg_name.rsplit("-", 2)[0]
-
-            self.install_count += 1
-            self.current_package = pkg_name
-
-            if self.total_packages > 0:
-                # Progress: installing is 50-100%
-                progress = 0.5 + (self.install_count / self.total_packages) * 0.5
-                if progress > self.last_progress:
-                    self.last_progress = progress
-                    return {
-                        "phase": "installing",
-                        "progress": progress,
-                        "current_package": self.current_package,
-                        "total_packages": self.total_packages,
-                        "completed_packages": self.install_count,
-                    }
-
-        # Check for completion line "Upgraded:" or "Installed:"
-        # This marks the summary at the end
-        if _DNF_COMPLETED_LINE_PATTERN.match(line):
-            # If we haven't reached 100% yet, do so now
-            if self.last_progress < 1.0:
-                self.last_progress = 0.99
-                return {
-                    "phase": "installing",
-                    "progress": 0.99,
-                    "current_package": "",
-                    "total_packages": self.total_packages,
-                    "completed_packages": self.total_packages,
-                    "message": "Finalizing...",
-                }
-
-        # Check for completion
-        if "Complete!" in line:
-            return {
-                "phase": "complete",
-                "progress": 1.0,
-                "current_package": "",
-                "total_packages": self.total_packages,
-                "completed_packages": self.total_packages,
-                "message": "Update complete",
-            }
-
-        return None
-
-
-class AptUpdateProgressTracker:
-    """Tracks progress during apt update by counting repository lines.
-
-    During 'apt update', APT outputs lines like:
-    - "Hit:1 http://archive.ubuntu.com/ubuntu jammy InRelease"
-    - "Get:2 http://security.ubuntu.com/ubuntu jammy-security InRelease [110 kB]"
-
-    This class counts these lines to provide progress updates during the
-    checking phase, which otherwise would show 0% until complete.
-    """
-
-    def __init__(self, estimated_repos: int = 10) -> None:
-        """Initialize the progress tracker.
-
-        Args:
-            estimated_repos: Estimated number of repositories. Used for
-                initial progress calculation before we know the actual count.
-        """
-        self.estimated_repos = estimated_repos
-        self.seen_repos = 0
-        self.last_progress = 0.0
-
-    def parse_line(self, line: str) -> float | None:
-        """Parse a line and return progress (0.0-1.0) if applicable.
-
-        Args:
-            line: A single line of apt update output.
-
-        Returns:
-            Progress value (0.0-0.95) if this line indicates a repository
-            being checked, None otherwise. Never returns 1.0 as completion
-            is signaled separately when the process exits successfully.
-        """
-        if line.startswith("Hit:") or line.startswith("Get:"):
-            self.seen_repos += 1
-            # Use asymptotic approach: never claim 100% until done
-            # As we see more repos, we increase our estimate
-            estimated = max(self.estimated_repos, self.seen_repos + 2)
-            progress = min(0.95, self.seen_repos / estimated)
-            if progress > self.last_progress:
-                self.last_progress = progress
-                return progress
-        return None
+# Re-exports for backwards compatibility: test imports and other modules that
+# import these classes from sysupdate.utils.parsing will continue to work.
+from ..updaters.apt_parsing import (  # noqa: E402, F401
+    AptUpgradeProgressTracker,
+    AptUpdateProgressTracker,
+)
+from ..updaters.dnf_parsing import (  # noqa: E402, F401
+    DnfUpgradeProgressTracker,
+    parse_dnf_check_output,
+)

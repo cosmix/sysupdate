@@ -215,14 +215,31 @@ class Aria2Downloader:
     def _move_from_partial(self, filename: str) -> bool:
         """Move a downloaded file from partial to archives directory.
 
+        Validates that *filename* is a bare name (no path separators) and that
+        the resolved paths stay within the expected directories to prevent
+        path-traversal attacks.
+
         Args:
             filename: Name of the file to move.
 
         Returns:
             True if successful, False otherwise.
         """
-        partial_path = APT_PARTIAL_DIR / filename
-        archive_path = APT_ARCHIVES_DIR / filename
+        import os
+
+        # Ensure filename is a bare basename (no directory components)
+        safe_name = os.path.basename(filename)
+        if safe_name != filename:
+            return False  # Reject filenames containing path separators
+
+        partial_path = (APT_PARTIAL_DIR / safe_name).resolve()
+        archive_path = (APT_ARCHIVES_DIR / safe_name).resolve()
+
+        # Verify resolved paths stay within expected directories
+        if not str(partial_path).startswith(str(APT_PARTIAL_DIR.resolve())):
+            return False
+        if not str(archive_path).startswith(str(APT_ARCHIVES_DIR.resolve())):
+            return False
 
         if not partial_path.exists():
             return False

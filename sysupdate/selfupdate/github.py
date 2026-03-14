@@ -121,7 +121,7 @@ class GitHubClient:
                     continue
                 raise
 
-        raise last_error  # type: ignore[misc]
+        raise last_error  # type: ignore[misc]  # last_error is always set after the loop
 
     async def get_latest_release(self) -> Release | None:
         """Get the latest release from GitHub.
