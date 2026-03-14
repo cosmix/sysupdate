@@ -8,5 +8,3 @@
 ## Project Type
 
 - **Python** (pyproject.toml or setup.py found)
-
-
