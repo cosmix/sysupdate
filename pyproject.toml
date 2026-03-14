@@ -17,25 +17,20 @@ classifiers = [
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: System :: Systems Administration",
 ]
 dependencies = [
-    "rich>=13.0.0",
-    "aiohttp>=3.9.0",
-    "packaging>=23.0",
-]
-
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0.0",
-    "pytest-asyncio>=0.23.0",
+    "rich>=13.0.0,<15",
+    "aiohttp>=3.9.0,<4",
+    "packaging>=23.0,<25",
 ]
 
 [project.scripts]
 sysupdate = "sysupdate.__main__:main"
 
 [build-system]
-requires = ["hatchling", "hatch-vcs"]
+requires = ["hatchling>=1.21,<2", "hatch-vcs>=0.4,<1"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
@@ -51,13 +46,10 @@ testpaths = ["tests"]
 
 [dependency-groups]
 dev = [
-    "aiohttp>=3.13.3",
+    "aiohttp>=3.9.0,<4",
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
 ]
 
 [tool.hatch.build.targets.wheel]
 packages = ["sysupdate"]
-
-[tool.hatch.build.targets.wheel.force-include]
-"sysupdate/py.typed" = "sysupdate/py.typed"

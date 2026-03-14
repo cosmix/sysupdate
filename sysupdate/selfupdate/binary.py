@@ -57,8 +57,23 @@ def get_binary_path() -> Path:
     if pyapp_path and pyapp_path != "1":
         # PYAPP contains an actual path, not just the flag "1"
         pyapp_binary = Path(pyapp_path)
-        if pyapp_binary.exists() and pyapp_binary.is_file():
-            return pyapp_binary
+        if "sysupdate" not in pyapp_binary.name:
+            raise RuntimeError(
+                f"PYAPP environment variable points to '{pyapp_binary}' which "
+                "does not appear to be a sysupdate binary. "
+                "The filename must contain 'sysupdate'."
+            )
+        if not pyapp_binary.exists() or not pyapp_binary.is_file():
+            raise RuntimeError(
+                f"PYAPP environment variable points to '{pyapp_binary}' which "
+                "does not exist or is not a regular file."
+            )
+        if not os.access(pyapp_binary, os.X_OK):
+            raise RuntimeError(
+                f"PYAPP environment variable points to '{pyapp_binary}' which "
+                "is not executable."
+            )
+        return pyapp_binary
 
     # Check parent process (for PyApp: the wrapper that spawned Python)
     # Note: This may not work if PyApp uses exec() which replaces the process
@@ -133,6 +148,13 @@ async def replace_binary(
         Tuple of (success, error_message)
         On success, error_message is empty string
     """
+    # Validate current_path points to an actual sysupdate binary
+    if "sysupdate" not in current_path.name:
+        return False, (
+            f"Refusing to replace '{current_path}': filename does not contain "
+            "'sysupdate'. This safety check prevents overwriting unrelated binaries."
+        )
+
     if not new_binary_path.exists():
         return False, f"New binary does not exist: {new_binary_path}"
 
@@ -255,6 +277,14 @@ async def _replace_direct(
     Returns:
         Tuple of (success, error_message)
     """
+    # Try atomic os.replace() first (works on same filesystem, POSIX atomic)
+    try:
+        os.replace(new_binary_path, current_path)
+        return True, ""
+    except OSError:
+        # os.replace() fails across filesystems; fall back to backup-move-restore
+        pass
+
     try:
         # Step 1: Backup current binary
         shutil.move(str(current_path), str(backup_path))

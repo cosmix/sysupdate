@@ -1,8 +1,39 @@
 """aria2 installation helper for parallel downloads."""
 
 import asyncio
+import shutil
+
 from rich.console import Console
 from rich.prompt import Confirm
+
+from . import invalidate_cache
+
+
+def _detect_install_command() -> list[str] | None:
+    """Detect the system package manager and return the aria2 install command.
+
+    Returns:
+        Install command as a list of strings, or None if no supported
+        package manager is found.
+    """
+    if shutil.which("apt"):
+        return ["sudo", "apt", "install", "-y", "aria2"]
+    if shutil.which("dnf"):
+        return ["sudo", "dnf", "install", "-y", "aria2"]
+    if shutil.which("pacman"):
+        return ["sudo", "pacman", "-S", "--noconfirm", "aria2"]
+    return None
+
+
+def _install_hint() -> str:
+    """Return a human-readable install hint based on the detected package manager."""
+    if shutil.which("apt"):
+        return "sudo apt install aria2"
+    if shutil.which("dnf"):
+        return "sudo dnf install aria2"
+    if shutil.which("pacman"):
+        return "sudo pacman -S aria2"
+    return "your package manager"
 
 
 async def prompt_install_aria2(console: Console) -> bool:
@@ -19,6 +50,8 @@ async def prompt_install_aria2(console: Console) -> bool:
         "[bold yellow]█[/]" if i % 2 == 0 else "[dim]░[/]" for i in range(48)
     )
 
+    hint = _install_hint()
+
     console.print()
     console.print(f"  {border}")
     console.print()
@@ -27,6 +60,8 @@ async def prompt_install_aria2(console: Console) -> bool:
     console.print()
     console.print("  aria2 enables parallel package downloads,")
     console.print("  significantly speeding up large updates.")
+    console.print()
+    console.print(f"  [dim]Install manually: {hint}[/]")
     console.print()
     console.print(f"  {border}")
     console.print()
@@ -44,7 +79,7 @@ async def prompt_install_aria2(console: Console) -> bool:
 
     if not install:
         console.print()
-        console.print("  [dim]Continuing with standard apt. This will take longer![/]")
+        console.print("  [dim]Continuing without aria2. Downloads will be slower.[/]")
         console.print()
         return False
 
@@ -52,7 +87,7 @@ async def prompt_install_aria2(console: Console) -> bool:
 
 
 async def _install_aria2(console: Console) -> bool:
-    """Install aria2 using apt.
+    """Install aria2 using the detected system package manager.
 
     Args:
         console: Rich Console instance for output
@@ -60,17 +95,21 @@ async def _install_aria2(console: Console) -> bool:
     Returns:
         True if installation succeeded, False otherwise.
     """
+    cmd = _detect_install_command()
+    if cmd is None:
+        console.print()
+        console.print("  [yellow]Could not detect a supported package manager.[/]")
+        console.print("  [dim]Please install aria2 manually using your package manager.[/]")
+        console.print()
+        return False
+
     console.print()
     console.print("  [cyan]Installing aria2...[/]")
     console.print()
 
     try:
         process = await asyncio.create_subprocess_exec(
-            "sudo",
-            "apt",
-            "install",
-            "-y",
-            "aria2",
+            *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
         )
@@ -84,6 +123,7 @@ async def _install_aria2(console: Console) -> bool:
         returncode = await process.wait()
 
         if returncode == 0:
+            invalidate_cache("aria2c")
             console.print()
             console.print("  [green]✓ aria2 installed successfully![/]")
             console.print("  [dim]Parallel downloads are now enabled.[/]")
@@ -93,7 +133,7 @@ async def _install_aria2(console: Console) -> bool:
             console.print()
             console.print("  [red]✗ Failed to install aria2.[/]")
             console.print(
-                "  [dim]Continuing with standard apt. This will take longer![/]"
+                "  [dim]Continuing without aria2. Downloads will be slower![/]"
             )
             console.print()
             return False
@@ -101,6 +141,6 @@ async def _install_aria2(console: Console) -> bool:
     except Exception as e:
         console.print()
         console.print(f"  [red]✗ Installation error: {e}[/]")
-        console.print("  [dim]Continuing with standard apt. This will take longer![/]")
+        console.print("  [dim]Continuing without aria2. Downloads will be slower![/]")
         console.print()
         return False
