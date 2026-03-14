@@ -154,6 +154,11 @@ class AptUpdater(BaseUpdater):
             result.error_message = str(e)
             report(UpdateProgress(phase=UpdatePhase.ERROR, message=str(e)))
         finally:
+            if self._process:
+                try:
+                    self._process.kill()
+                except ProcessLookupError:
+                    pass
             if self._logger:
                 self._logger.close()
 
@@ -173,6 +178,11 @@ class AptUpdater(BaseUpdater):
                 callback=callback, dry_run=dry_run, logger=self._logger,
             )
         finally:
+            if self._process:
+                try:
+                    self._process.kill()
+                except ProcessLookupError:
+                    pass
             if self._logger:
                 self._logger.close()
 

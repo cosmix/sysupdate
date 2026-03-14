@@ -154,6 +154,7 @@ openssl/jammy-updates 3.0.13-0ubuntu1 amd64 [upgradable from: 3.0.11-0ubuntu1]
             mock_update.stdout = AsyncMock()
             mock_update.stdout.readline = AsyncMock(return_value=b"")
             mock_update.wait = AsyncMock()
+            mock_update.kill = MagicMock()
 
             # Mock apt list
             mock_list = AsyncMock()

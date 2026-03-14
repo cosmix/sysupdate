@@ -43,7 +43,7 @@ async def command_available(command: str, *args: str) -> bool:
         )
         await proc.wait()
         result = proc.returncode == 0
-    except (FileNotFoundError, Exception):
+    except Exception:
         result = False
 
     _availability_cache[cache_key] = (result, time.monotonic())

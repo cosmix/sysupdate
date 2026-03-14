@@ -198,12 +198,12 @@ class TestDnfUpdater:
                 b""  # EOF
             ])
             mock_upgrade_proc.wait = AsyncMock()
+            mock_upgrade_proc.kill = MagicMock()
 
             mock_exec.side_effect = [
-                mock_check_proc,  # First check in run_update
-                mock_check_proc,  # Second check in _run_dnf_upgrade
-                mock_list_proc,   # get_current_versions
-                mock_upgrade_proc # actual upgrade
+                mock_check_proc,   # check_updates() in _do_upgrade
+                mock_list_proc,    # _get_current_versions()
+                mock_upgrade_proc  # actual upgrade subprocess
             ]
 
             with patch.object(updater, "_logger", MagicMock()):
