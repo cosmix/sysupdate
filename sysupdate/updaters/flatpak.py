@@ -13,7 +13,7 @@ from .base import (
     read_process_lines,
 )
 from ..utils import command_available
-from ..utils.parsing import parse_flatpak_output
+from ..utils.parsing import clean_flatpak_ref, parse_flatpak_output
 
 # Skip patterns for filtering runtime/extension packages
 FLATPAK_SKIP_PATTERNS = frozenset([
@@ -59,8 +59,7 @@ class FlatpakUpdater(BaseUpdater):
                 parts = line.split("\t")
                 if len(parts) >= 2:
                     name = parts[0].strip()
-                    # Get display name from ref
-                    display_name = name.split(".")[-1] if "." in name else name
+                    display_name = clean_flatpak_ref(name)
                     branch = parts[1].strip() if len(parts) > 1 else ""
 
                     packages.append(
@@ -148,11 +147,10 @@ class FlatpakUpdater(BaseUpdater):
 
                     # Try to extract current app name
                     app_match = re.search(
-                        r"(?:Downloading|Fetching)\s+([\w.]+)", line
+                        r"(?:Downloading|Fetching)\s+(\S+)", line
                     )
                     if app_match:
-                        ref = app_match.group(1).rstrip(".")
-                        current_app = ref.split(".")[-1] if "." in ref else ref
+                        current_app = clean_flatpak_ref(app_match.group(1))
 
                     # Calculate overall progress
                     if total_apps > 0:
@@ -180,7 +178,7 @@ class FlatpakUpdater(BaseUpdater):
                 if action_match:
                     app_ref = action_match.group(1)
                     if not any(skip in app_ref for skip in FLATPAK_SKIP_PATTERNS):
-                        current_app = app_ref.split(".")[-1]
+                        current_app = clean_flatpak_ref(app_ref)
                         progress = (completed + 0.5) / max(total_apps, 1)
                         report(
                             UpdateProgress(
