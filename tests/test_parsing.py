@@ -1,6 +1,7 @@
 """Tests for output parsing utilities."""
 
 from sysupdate.utils.parsing import (
+    clean_flatpak_ref,
     parse_apt_output,
     parse_flatpak_output,
     parse_dnf_check_output,
@@ -100,6 +101,98 @@ class TestParseFlatpakOutput:
 
         for pkg in packages:
             assert pkg.status == "complete"
+
+    def test_parse_ref_with_arch_and_branch(self):
+        """Numbered ref with arch/branch suffix shows only the app name."""
+        output = "1. ai_rocks/x86_64/stable stable"
+        packages = parse_flatpak_output(output)
+
+        assert len(packages) == 1
+        assert packages[0].name == "ai_rocks"
+
+    def test_parse_dotted_ref_with_arch_and_branch(self):
+        """Dotted app ID with arch/branch suffix returns final segment."""
+        output = "1. org.mozilla.firefox/x86_64/stable stable"
+        packages = parse_flatpak_output(output)
+
+        assert len(packages) == 1
+        assert packages[0].name == "firefox"
+
+    def test_parse_action_line_with_slashed_ref(self):
+        """'Updating name/arch/branch' lines strip arch/branch."""
+        output = "Updating ai_rocks/x86_64/stable\n"
+        packages = parse_flatpak_output(output)
+
+        assert len(packages) == 1
+        assert packages[0].name == "ai_rocks"
+
+
+class TestCleanFlatpakRef:
+    """Tests for clean_flatpak_ref helper.
+
+    Covers the various ref shapes flatpak emits across remote-ls, update
+    progress, and installation lines.
+    """
+
+    def test_bare_name(self):
+        """A bare lowercase name is returned unchanged."""
+        assert clean_flatpak_ref("ai_rocks") == "ai_rocks"
+
+    def test_dotted_app_id(self):
+        """A dotted app ID is reduced to its final segment."""
+        assert clean_flatpak_ref("org.mozilla.firefox") == "firefox"
+
+    def test_name_with_arch_and_branch(self):
+        """A name/arch/branch triple drops the arch and branch."""
+        assert clean_flatpak_ref("ai_rocks/x86_64/stable") == "ai_rocks"
+
+    def test_name_with_arch_only(self):
+        """A name/arch pair (missing branch) drops the arch."""
+        assert clean_flatpak_ref("ai_rocks/x86_64") == "ai_rocks"
+
+    def test_dotted_id_with_arch_and_branch(self):
+        """A dotted ID with arch/branch returns its final segment."""
+        assert (
+            clean_flatpak_ref("org.mozilla.firefox/x86_64/stable") == "firefox"
+        )
+
+    def test_dotted_id_with_arch_only(self):
+        """A dotted ID missing the branch still strips the arch."""
+        assert clean_flatpak_ref("org.gimp.GIMP/aarch64") == "GIMP"
+
+    def test_app_kind_prefix(self):
+        """A full ref with the 'app/' kind prefix is handled."""
+        assert (
+            clean_flatpak_ref("app/org.mozilla.firefox/x86_64/stable")
+            == "firefox"
+        )
+
+    def test_runtime_kind_prefix(self):
+        """A full ref with the 'runtime/' kind prefix is handled."""
+        assert (
+            clean_flatpak_ref(
+                "runtime/org.freedesktop.Platform/x86_64/22.08"
+            )
+            == "Platform"
+        )
+
+    def test_trailing_dot_is_stripped(self):
+        """A trailing dot (seen in progress lines like 'Downloading foo...')
+        is stripped before reducing to a display name."""
+        assert clean_flatpak_ref("org.mozilla.firefox...") == "firefox"
+        assert clean_flatpak_ref("ai_rocks.") == "ai_rocks"
+
+    def test_empty_string(self):
+        """An empty input is returned unchanged."""
+        assert clean_flatpak_ref("") == ""
+
+    def test_whitespace_only(self):
+        """Whitespace-only input collapses to an empty string."""
+        assert clean_flatpak_ref("   ") == ""
+
+    def test_whitespace_is_trimmed(self):
+        """Surrounding whitespace is trimmed before processing."""
+        assert clean_flatpak_ref("  ai_rocks/x86_64/stable  ") == "ai_rocks"
 
 
 class TestAptUpgradeProgressTracker:
