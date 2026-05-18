@@ -19,6 +19,25 @@ _NUMBERED_PATTERN = re.compile(r"^\s*\d+\.\s+(\S+)\s+(\S+)(?:\s+(\S+))?")
 _ACTION_PATTERN = re.compile(r"(?:Installing|Updating)\s+(\S+)")
 
 
+def clean_flatpak_ref(ref: str) -> str:
+    """Reduce a Flatpak ref to a display-friendly name.
+
+    Handles the variety of ref shapes flatpak emits in different commands:
+    bare app IDs (``org.mozilla.firefox``), partial refs with arch/branch
+    (``ai_rocks/x86_64/stable``), refs missing the branch
+    (``ai_rocks/x86_64``), and full refs with an ``app/`` or ``runtime/``
+    kind prefix (``app/org.mozilla.firefox/x86_64/stable``). Returns the
+    final dotted segment of the app ID, or the bare name if undotted.
+    """
+    ref = ref.strip()
+    if not ref:
+        return ref
+    if ref.startswith(("app/", "runtime/")):
+        ref = ref.split("/", 1)[1]
+    base = ref.split("/", 1)[0].rstrip(".")
+    return base.rsplit(".", 1)[-1] if "." in base else base
+
+
 def parse_apt_output(output: str) -> list[Package]:
     """
     Parse APT output to extract package information.
@@ -99,8 +118,7 @@ def parse_flatpak_output(output: str) -> list[Package]:
             name, branch = match.group(1), match.group(2)
             size = match.group(3) or ""
 
-            # Extract readable name from ref (last part)
-            display_name = name.split(".")[-1] if "." in name else name
+            display_name = clean_flatpak_ref(name)
 
             packages[name] = Package(
                 name=display_name,
@@ -114,7 +132,7 @@ def parse_flatpak_output(output: str) -> list[Package]:
         match = _ACTION_PATTERN.search(line)
         if match:
             name = match.group(1)
-            display_name = name.split(".")[-1] if "." in name else name
+            display_name = clean_flatpak_ref(name)
             if name not in packages:
                 packages[name] = Package(
                     name=display_name,
