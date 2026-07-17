@@ -138,6 +138,31 @@ app.py orchestrates updaters via asyncio.gather():
 - Old location `/tmp/update_logs/` is NO LONGER USED (except legacy bash script)
 - Symlink protection: `os.O_NOFOLLOW` on file open, realpath validation on directory
 
+## Summary Module Split + Animation Controls (added 2026-07-17)
+
+- `sysupdate/summary.py` — end-of-run report split out of ui.py (400-line limit): count line with sheen sweep (`banner.sheen_sweep_line`), per-manager count bars (shown only when 2+ managers have updates), `version_diff_text()` (component-boundary diff: `3.0.`dim + `13`bold), failure block with `utils.logging.get_log_dir()` pointer, `Done in Xs`/`Checked in Xs` tagline (sentence case; `Checked in` indented to col 5 to align under the glyph line's text column)
+- Animations gated by `SysUpdateCLI(no_animation=)` ← `--no-animation` flag / `SYSUPDATE_NO_ANIMATION` env; `show_banner(animate=)` and `print_summary(animate=)` still require `console.is_terminal`
+- When all updaters fail (total=0 + failures), summary no longer claims "up to date"
+- selfupdate/__init__.py styling: tests patch `sysupdate.selfupdate.Console`/`Progress`/`SelfUpdater` at module level — keep those names used from module namespace
+- Terminal window title set in `app.run()` (`sysupdate · updating…` → `sysupdate`)
+- Testing gotcha: per-char styled output and Rich's ReprHighlighter break plain substrings apart with ANSI codes — strip `\x1b\[[0-9;?]*[a-zA-Z]` before asserting on rendered console output
+
+## Gradient UI Identity (added 2026-07-17)
+
+- The banner's "nebula" gradient + sheen motif runs through the whole UI: `ui.GradientBarColumn` (bar reveals the gradient as it fills; indeterminate = sheen pulse), `ui.MANAGER_ACCENTS` (per-manager colors sampled from the gradient stops), summary rules via `banner.gradient_rule`, aria2 prompt, sudo prompt in `__main__.py`
+- `banner.blend_rgb` / `banner.scale_rgb` / `banner.gradient_rgb` are the shared color primitives — reuse them, do not duplicate color math
+- `ui._MARKUP_PATTERN` is now a generic `\[[^\]]*\]` stripper because descriptions carry `[bold]`/`[dim]`/hex markup; `app._format_desc` relies on it for fixed-width alignment
+- ASCII fallbacks everywhere: `·`→`|`, `▪`→`*`, `—`→`--`, `⚡`→`!`, spinner `dots`→`line`, bar `━`→`=`/`-`
+
+## Animated Startup Banner (added 2026-07-17)
+
+- `sysupdate/banner.py` — animated banner with diagonal truecolor gradient + sheen reveal
+- `show_banner(console, version, dry_run, use_ascii)` is the public entry, called from `app.SysUpdateCLI._print_header()`
+- Animates via `rich.live.Live` only when `console.is_terminal`; static print otherwise (keeps tests that mock `console.print` working)
+- Adaptive art: `BLOCK_LOGO` (ANSI Shadow, 75 cols) when width allows, `FIGLET_LOGO` (pure ASCII, 47 cols) for narrow/non-Unicode terminals
+- `gradient_rule()` reused by `ui.print_summary` for section rules
+- `ui.print_header` was removed; header logic now lives entirely in banner.py
+
 ## Self-Update Security Hardening (added by security-utils-config)
 
 - Response size limits: `MAX_API_RESPONSE_BYTES` (2MB), `MAX_BINARY_DOWNLOAD_BYTES` (200MB), `MAX_CHECKSUM_FILE_BYTES` (100KB)

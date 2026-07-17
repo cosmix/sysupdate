@@ -22,7 +22,9 @@ A fast, beautiful CLI for managing system updates on Linux. Runs package manager
 - **Parallel Downloads**: Uses aria2c for faster APT package downloads (optional)
 - **Real-time Progress**: Live progress bars with package names and speed
 - **Self-Update**: Built-in command to update sysupdate itself from GitHub Releases
-- **Minimal Output**: Clean, focused interface using Rich
+- **Gorgeous Terminal UI**: Animated startup banner with a diagonal sheen reveal,
+  truecolor gradient progress bars, and per-manager accent colors — with graceful
+  fallbacks for narrow, non-Unicode, or piped output
 - **Detailed Logging**: Timestamped logs saved for troubleshooting
 
 ## Installation
@@ -59,6 +61,9 @@ sysupdate --dry-run
 # Verbose mode (detailed package info)
 sysupdate --verbose
 
+# Disable banner/summary animations (or set SYSUPDATE_NO_ANIMATION=1)
+sysupdate --no-animation
+
 # Show version
 sysupdate --version
 
@@ -71,32 +76,52 @@ sysupdate self-update
 
 ### Example Output
 
-```text
-                                 _       _
-   ___ _   _ ___ _   _ _ __   __| | __ _| |_ ___
-  / __| | | / __| | | | '_ \ / _` |/ _` | __/ _ \
-  \__ \ |_| \__ \ |_| | |_) | (_| | (_| | ||  __/
-  |___/\__, |___/\__,_| .__/ \__,_|\__,_|\__\___|
-       |___/          |_|
+Startup opens with an animated banner: a truecolor gradient wordmark revealed
+by a diagonal sheen sweeping across the letters (rendered statically when
+output is piped). Progress bars fill with the same gradient, and a sheen
+pulse sweeps each bar while its package manager is still checking.
 
-  ✓ APT                     ━━━━━━━━━━━━━━━━ 100% 0:00:42
-  ✓ Flatpak                 ━━━━━━━━━━━━━━━━ 100% 0:00:15
-  ✓ Snap                    ━━━━━━━━━━━━━━━━ 100% 0:00:08
+```text
+  ███████╗██╗   ██╗███████╗██╗   ██╗██████╗ ██████╗  █████╗ ████████╗███████╗
+  ██╔════╝╚██╗ ██╔╝██╔════╝██║   ██║██╔══██╗██╔══██╗██╔══██╗╚══██╔══╝██╔════╝
+  ███████╗ ╚████╔╝ ███████╗██║   ██║██████╔╝██║  ██║███████║   ██║   █████╗
+  ╚════██║  ╚██╔╝  ╚════██║██║   ██║██╔═══╝ ██║  ██║██╔══██║   ██║   ██╔══╝
+  ███████║   ██║   ███████║╚██████╔╝██║     ██████╔╝██║  ██║   ██║   ███████╗
+  ╚══════╝   ╚═╝   ╚══════╝ ╚═════╝ ╚═╝     ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝
+
+  ───────────────────────────────── v2.1.0 ──────────────────────────────────
+
+  ✓ APT                            ━━━━━━━━━━━━━━━━ 100% 0:00:42
+  ✓ Flatpak                        ━━━━━━━━━━━━━━━━ 100% 0:00:15
+  ✓ Snap                           ━━━━━━━━━━━━━━━━ 100% 0:00:08
 
    ────────────────────────────────────────
 
-   ✓ Updated 15 packages (10 APT, 2 Flatpak, 3 Snap)
+   ✓ Updated 15 packages (10 APT · 2 Flatpak · 3 Snap)
 
-   APT Packages (10)
+   APT      ━━━━━━━━━━━━━━━━━━━━ 10
+   Flatpak  ━━━━ 2
+   Snap     ━━━━━━ 3
 
-   Package              Old             →   New
-   libssl3              3.0.11              3.0.13
-   openssl              3.0.11              3.0.13
-   python3.11           3.11.6              3.11.8
-   ... and 7 more
+   ▪ APT Packages (10)
+
+   Package         Old          →   New
+   libssl3         3.0.11       →   3.0.13
+   openssl         3.0.11       →   3.0.13
+   python3.11      3.11.6       →   3.11.8
+   ...
+
+   ────────────────────────────────────────
+   Done in 2m 07s
 ```
 
-_On Fedora, APT is replaced with DNF. On Arch, it's replaced with Pacman._
+In the version columns only the part that actually changed is highlighted
+(`3.0.`11 → `3.0.`**13**), the count line gets a quick celebratory sheen sweep,
+and failed updaters are listed with a pointer to their log directory. The
+`self-update` command shares the same look.
+
+_On Fedora, APT is replaced with DNF. On Arch, it's replaced with Pacman.
+Narrow or non-Unicode terminals automatically fall back to compact ASCII art._
 
 ## Requirements
 
