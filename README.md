@@ -81,39 +81,7 @@ by a diagonal sheen sweeping across the letters (rendered statically when
 output is piped). Progress bars fill with the same gradient, and a sheen
 pulse sweeps each bar while its package manager is still checking.
 
-```text
-  ███████╗██╗   ██╗███████╗██╗   ██╗██████╗ ██████╗  █████╗ ████████╗███████╗
-  ██╔════╝╚██╗ ██╔╝██╔════╝██║   ██║██╔══██╗██╔══██╗██╔══██╗╚══██╔══╝██╔════╝
-  ███████╗ ╚████╔╝ ███████╗██║   ██║██████╔╝██║  ██║███████║   ██║   █████╗
-  ╚════██║  ╚██╔╝  ╚════██║██║   ██║██╔═══╝ ██║  ██║██╔══██║   ██║   ██╔══╝
-  ███████║   ██║   ███████║╚██████╔╝██║     ██████╔╝██║  ██║   ██║   ███████╗
-  ╚══════╝   ╚═╝   ╚══════╝ ╚═════╝ ╚═╝     ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝
-
-  ───────────────────────────────── v2.1.0 ──────────────────────────────────
-
-  ✓ APT                            ━━━━━━━━━━━━━━━━ 100% 0:00:42
-  ✓ Flatpak                        ━━━━━━━━━━━━━━━━ 100% 0:00:15
-  ✓ Snap                           ━━━━━━━━━━━━━━━━ 100% 0:00:08
-
-   ────────────────────────────────────────
-
-   ✓ Updated 15 packages (10 APT · 2 Flatpak · 3 Snap)
-
-   APT      ━━━━━━━━━━━━━━━━━━━━ 10
-   Flatpak  ━━━━ 2
-   Snap     ━━━━━━ 3
-
-   ▪ APT Packages (10)
-
-   Package         Old          →   New
-   libssl3         3.0.11       →   3.0.13
-   openssl         3.0.11       →   3.0.13
-   python3.11      3.11.6       →   3.11.8
-   ...
-
-   ────────────────────────────────────────
-   Done in 2m 07s
-```
+![sysupdate in action — animated gradient banner, live truecolor progress bars, and the end-of-run summary](docs/demo.gif)
 
 In the version columns only the part that actually changed is highlighted
 (`3.0.`11 → `3.0.`**13**), the count line gets a quick celebratory sheen sweep,
