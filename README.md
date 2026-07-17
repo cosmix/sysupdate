@@ -29,6 +29,30 @@ A fast, beautiful CLI for managing system updates on Linux. Runs package manager
 
 ## Installation
 
+### Pre-built binary (recommended)
+
+Grab a self-contained binary from the [latest release](https://github.com/cosmix/sysupdate/releases/latest) — no Python or `uv` required. Replace `x86_64` with `aarch64` on ARM systems.
+
+```bash
+# Download the binary for your architecture
+curl -LO https://github.com/cosmix/sysupdate/releases/latest/download/sysupdate-linux-x86_64
+
+# (Optional) verify the checksum
+curl -LO https://github.com/cosmix/sysupdate/releases/latest/download/SHA256SUMS.txt
+sha256sum --check --ignore-missing SHA256SUMS.txt
+
+# Install onto your PATH (the filename must stay 'sysupdate' for self-update to work)
+chmod +x sysupdate-linux-x86_64
+sudo mv sysupdate-linux-x86_64 /usr/local/bin/sysupdate
+
+# Run
+sysupdate
+```
+
+Once installed this way, `sysupdate self-update` upgrades the binary in place from future releases.
+
+### From source
+
 ```bash
 # Clone the repository
 git clone https://github.com/cosmix/sysupdate.git
