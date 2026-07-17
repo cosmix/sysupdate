@@ -61,10 +61,12 @@ class TestCmdUpdate:
         mock_instance.run.return_value = 0
         mock_cli_cls.return_value = mock_instance
 
-        args = argparse.Namespace(verbose=False, dry_run=False)
+        args = argparse.Namespace(verbose=False, dry_run=False, no_animation=False)
         result = cmd_update(args)
 
-        mock_cli_cls.assert_called_once_with(verbose=False, dry_run=False)
+        mock_cli_cls.assert_called_once_with(
+            verbose=False, dry_run=False, no_animation=False
+        )
         mock_instance.run.assert_called_once()
         assert result == 0
 
@@ -76,10 +78,12 @@ class TestCmdUpdate:
         mock_instance.run.return_value = 0
         mock_cli_cls.return_value = mock_instance
 
-        args = argparse.Namespace(verbose=True, dry_run=False)
+        args = argparse.Namespace(verbose=True, dry_run=False, no_animation=False)
         cmd_update(args)
 
-        mock_cli_cls.assert_called_once_with(verbose=True, dry_run=False)
+        mock_cli_cls.assert_called_once_with(
+            verbose=True, dry_run=False, no_animation=False
+        )
 
     @patch("sysupdate.__main__.check_sudo", return_value=True)
     @patch("sysupdate.app.SysUpdateCLI")
@@ -89,17 +93,19 @@ class TestCmdUpdate:
         mock_instance.run.return_value = 0
         mock_cli_cls.return_value = mock_instance
 
-        args = argparse.Namespace(verbose=False, dry_run=True)
+        args = argparse.Namespace(verbose=False, dry_run=True, no_animation=False)
         cmd_update(args)
 
-        mock_cli_cls.assert_called_once_with(verbose=False, dry_run=True)
+        mock_cli_cls.assert_called_once_with(
+            verbose=False, dry_run=True, no_animation=False
+        )
         # dry_run skips check_sudo
         mock_sudo.assert_not_called()
 
     @patch("sysupdate.__main__.check_sudo", return_value=False)
     def test_returns_1_when_sudo_fails(self, mock_sudo):
         """cmd_update returns 1 when sudo access cannot be obtained."""
-        args = argparse.Namespace(verbose=False, dry_run=False)
+        args = argparse.Namespace(verbose=False, dry_run=False, no_animation=False)
         result = cmd_update(args)
 
         assert result == 1
@@ -113,7 +119,7 @@ class TestCmdUpdate:
         mock_instance.run.return_value = 42
         mock_cli_cls.return_value = mock_instance
 
-        args = argparse.Namespace(verbose=False, dry_run=False)
+        args = argparse.Namespace(verbose=False, dry_run=False, no_animation=False)
         result = cmd_update(args)
 
         assert result == 42
@@ -126,7 +132,7 @@ class TestCmdUpdate:
         mock_instance.run.return_value = 0
         mock_cli_cls.return_value = mock_instance
 
-        args = argparse.Namespace(verbose=False, dry_run=True)
+        args = argparse.Namespace(verbose=False, dry_run=True, no_animation=False)
         cmd_update(args)
 
         mock_sudo.assert_not_called()
@@ -209,6 +215,25 @@ class TestMain:
 
         args = mock_cmd_update.call_args[0][0]
         assert args.dry_run is True
+
+    @patch("sysupdate.__main__.cmd_update", return_value=0)
+    def test_no_animation_flag(self, mock_cmd_update):
+        """--no-animation flag is parsed and passed through."""
+        with patch("sys.argv", ["sysupdate", "--no-animation"]):
+            main()
+
+        args = mock_cmd_update.call_args[0][0]
+        assert args.no_animation is True
+
+    @patch("sysupdate.__main__.cmd_update", return_value=0)
+    def test_no_animation_env_var(self, mock_cmd_update, monkeypatch):
+        """SYSUPDATE_NO_ANIMATION env var disables animation by default."""
+        monkeypatch.setenv("SYSUPDATE_NO_ANIMATION", "1")
+        with patch("sys.argv", ["sysupdate"]):
+            main()
+
+        args = mock_cmd_update.call_args[0][0]
+        assert args.no_animation is True
 
     @patch("sysupdate.__main__.cmd_update", return_value=0)
     def test_combined_flags(self, mock_cmd_update):

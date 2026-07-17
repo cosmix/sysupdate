@@ -2,6 +2,7 @@
 
 import argparse
 import asyncio
+import os
 import subprocess
 import sys
 
@@ -10,9 +11,19 @@ from . import __version__
 
 def check_sudo() -> bool:
     """Prompt for sudo password before starting."""
-    print()  # Blank line after command prompt
-    print("sysupdate requires sudo access.")
-    print("Please enter your password if prompted.\n")
+    from rich.console import Console
+
+    console = Console()
+    utf = "utf" in (console.encoding or "").lower()
+    diamond = "*" if not utf else "◆"
+    dash = "--" if not utf else "—"
+
+    console.print()
+    console.print(
+        f"[bold #8b5cf6]{diamond}[/] [bold]sysupdate needs sudo[/]"
+        f" [dim]{dash} enter your password if prompted[/]"
+    )
+    console.print()
 
     try:
         result = subprocess.run(
@@ -21,7 +32,7 @@ def check_sudo() -> bool:
         )
         return result.returncode == 0
     except Exception as e:
-        print(f"Error: {e}")
+        console.print(f"[bold #f87171]x[/] {e}")
         return False
 
 
@@ -30,12 +41,20 @@ def cmd_update(args: argparse.Namespace) -> int:
     # Get sudo credentials before starting
     if not args.dry_run:
         if not check_sudo():
-            print("\nFailed to get sudo access. Exiting.")
+            from rich.console import Console
+
+            Console().print(
+                "\n[bold #f87171]sudo access failed[/] [dim]- exiting[/]"
+            )
             return 1
 
     from .app import SysUpdateCLI
 
-    cli = SysUpdateCLI(verbose=args.verbose, dry_run=args.dry_run)
+    cli = SysUpdateCLI(
+        verbose=args.verbose,
+        dry_run=args.dry_run,
+        no_animation=args.no_animation,
+    )
     return cli.run()
 
 
@@ -66,6 +85,13 @@ def main() -> int:
         "--dry-run",
         action="store_true",
         help="Show what would be updated without making changes",
+    )
+    parser.add_argument(
+        "--no-animation",
+        action="store_true",
+        default=bool(os.environ.get("SYSUPDATE_NO_ANIMATION")),
+        help="Disable banner and summary animations"
+        " (also via SYSUPDATE_NO_ANIMATION=1)",
     )
 
     # Add subparsers for commands

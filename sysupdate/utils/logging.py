@@ -28,6 +28,11 @@ def _get_log_dir() -> Path:
     return Path.home() / ".local" / "state" / "sysupdate" / "logs"
 
 
+def get_log_dir() -> Path:
+    """Return the log directory path (without creating it)."""
+    return _get_log_dir()
+
+
 def get_log_path(suffix: str = "") -> Path:
     """Get path to a log file with timestamp.
 

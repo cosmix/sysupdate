@@ -6,6 +6,7 @@ import shutil
 from rich.console import Console
 from rich.prompt import Confirm
 
+from ..banner import gradient_rule
 from . import invalidate_cache
 
 
@@ -45,25 +46,27 @@ async def prompt_install_aria2(console: Console) -> bool:
     Returns:
         True if aria2 is now available, False otherwise.
     """
-    # Barber-pole border - yellow and dim (works on light and dark terminals)
-    border = "".join(
-        "[bold yellow]█[/]" if i % 2 == 0 else "[dim]░[/]" for i in range(48)
-    )
+    use_ascii = "utf" not in (console.encoding or "").lower()
+    bolt = "!" if use_ascii else "⚡"
+    dash = "--" if use_ascii else "—"
+    sep = "|" if use_ascii else "·"
 
     hint = _install_hint()
 
     console.print()
-    console.print(f"  {border}")
+    console.print(gradient_rule(48, use_ascii, indent=2))
     console.print()
-    console.print("  [bold yellow]![/]  [bold]aria2c is not installed[/]")
-    console.print("  [dim]Downloads will be sequential (slower)[/]")
+    console.print(
+        f"  [bold #fbbf24]{bolt} aria2c is not installed[/]"
+        f" [dim]{dash} downloads will be sequential[/]"
+    )
     console.print()
-    console.print("  aria2 enables parallel package downloads,")
-    console.print("  significantly speeding up large updates.")
+    console.print("  [dim]aria2 enables parallel package downloads,[/]")
+    console.print("  [dim]significantly speeding up large updates.[/]")
     console.print()
-    console.print(f"  [dim]Install manually: {hint}[/]")
+    console.print(f"  Install manually [dim]{sep}[/] [bold]{hint}[/]")
     console.print()
-    console.print(f"  {border}")
+    console.print(gradient_rule(48, use_ascii, indent=2))
     console.print()
 
     # Prompt user
@@ -71,7 +74,7 @@ async def prompt_install_aria2(console: Console) -> bool:
     install = await loop.run_in_executor(
         None,
         lambda: Confirm.ask(
-            "  [yellow]I can install aria2 right now. It'll only take a few seconds.[/]",
+            "  [bold #8b5cf6]Install aria2 now?[/] [dim](takes a few seconds)[/]",
             console=console,
             default=True,
         ),
@@ -104,7 +107,7 @@ async def _install_aria2(console: Console) -> bool:
         return False
 
     console.print()
-    console.print("  [cyan]Installing aria2...[/]")
+    console.print("  [bold #22d3ee]Installing aria2…[/]")
     console.print()
 
     try:
@@ -125,13 +128,13 @@ async def _install_aria2(console: Console) -> bool:
         if returncode == 0:
             invalidate_cache("aria2c")
             console.print()
-            console.print("  [green]✓ aria2 installed successfully![/]")
+            console.print("  [bold #4ade80]✓ aria2 installed successfully![/]")
             console.print("  [dim]Parallel downloads are now enabled.[/]")
             console.print()
             return True
         else:
             console.print()
-            console.print("  [red]✗ Failed to install aria2.[/]")
+            console.print("  [bold #f87171]✗ Failed to install aria2.[/]")
             console.print(
                 "  [dim]Continuing without aria2. Downloads will be slower![/]"
             )
@@ -140,7 +143,7 @@ async def _install_aria2(console: Console) -> bool:
 
     except Exception as e:
         console.print()
-        console.print(f"  [red]✗ Installation error: {e}[/]")
+        console.print(f"  [bold #f87171]✗ Installation error: {e}[/]")
         console.print("  [dim]Continuing without aria2. Downloads will be slower![/]")
         console.print()
         return False

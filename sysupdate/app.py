@@ -1,28 +1,29 @@
 """Minimal CLI interface for System Update Manager using Rich."""
 
 import asyncio
+import time
 from dataclasses import dataclass
 from typing import Callable
 from rich.console import Console
 from rich.progress import (
     Progress,
     TextColumn,
-    BarColumn,
     TaskID,
     TimeElapsedColumn,
 )
 
 from . import __version__
+from .banner import show_banner
+from .summary import print_summary
 from .ui import (
     StatusColumn,
+    GradientBarColumn,
     PhaseAwareProgressColumn,
     SpeedColumn,
     ETAColumn,
     BAR_WIDTH,
     DESC_WIDTH,
     _MARKUP_PATTERN,
-    print_header,
-    print_summary,
 )
 from .updaters.base import (
     UpdatePhase,
@@ -37,7 +38,7 @@ from .updaters.snap import SnapUpdater
 from .updaters.dnf import DnfUpdater
 from .updaters.pacman import PacmanUpdater
 from .updaters.aria2_downloader import Aria2Downloader
-from .utils.logging import setup_logging
+from .utils.logging import get_log_dir, setup_logging
 from .utils.aria2 import prompt_install_aria2
 
 
@@ -53,12 +54,19 @@ class UpdaterConfig:
 class SysUpdateCLI:
     """Minimal CLI for system updates with Rich progress display."""
 
-    def __init__(self, verbose: bool = False, dry_run: bool = False) -> None:
+    def __init__(
+        self,
+        verbose: bool = False,
+        dry_run: bool = False,
+        no_animation: bool = False,
+    ) -> None:
         self.verbose = verbose
         self.dry_run = dry_run
         self.console = Console()
         self._logger = setup_logging(verbose)
         self._use_ascii = not self._supports_unicode()
+        self._sep = "|" if self._use_ascii else "·"
+        self._animate = not no_animation
         self._updaters = [
             UpdaterConfig(AptUpdater(), "APT", max_pkg_len=12),
             UpdaterConfig(FlatpakUpdater(), "Flatpak", max_pkg_len=10),
@@ -74,17 +82,32 @@ class SysUpdateCLI:
 
     def run(self) -> int:
         """Run the update process."""
-        self._print_header()
-
         try:
+            if self.console.is_terminal:
+                self.console.set_window_title("sysupdate · updating…")
+            self._print_header()
             return asyncio.run(self._run_updates())
         except KeyboardInterrupt:
-            self.console.print("\n[yellow]Interrupted[/]")
+            symbol = "!" if self._use_ascii else "⚡"
+            dash = "--" if self._use_ascii else "—"
+            self.console.print(
+                f"\n[bold #fbbf24]{symbol} Interrupted[/]"
+                f"[dim] {dash} no further changes made[/]"
+            )
             return 130
+        finally:
+            if self.console.is_terminal:
+                self.console.set_window_title("sysupdate")
 
     def _print_header(self) -> None:
-        """Print gradient-colored ASCII art header (delegates to ui module)."""
-        print_header(self.console, __version__, self.dry_run, self._use_ascii)
+        """Print the animated sheen banner (delegates to banner module)."""
+        show_banner(
+            self.console,
+            __version__,
+            self.dry_run,
+            self._use_ascii,
+            animate=self._animate,
+        )
 
     def _format_desc(self, prefix: str, label: str, detail: str = "") -> str:
         """Format description with fixed width (truncate or pad as needed).
@@ -139,9 +162,13 @@ class SysUpdateCLI:
                     msg = update.message.rstrip(".")
                     if len(msg) > 25:
                         msg = msg[:24] + "\u2026"
-                    desc = self._format_desc("", f"{label} [dim]|[/] {msg}")
+                    desc = self._format_desc(
+                        "", f"[bold]{label}[/] [dim]{self._sep} {msg}[/]"
+                    )
                 else:
-                    desc = self._format_desc("", f"{label} [dim]|[/] checking")
+                    desc = self._format_desc(
+                        "", f"[bold]{label}[/] [dim]{self._sep} checking[/]"
+                    )
                 # Keep total=None for pulse animation, only update description
                 progress.update(
                     task_id,
@@ -156,9 +183,13 @@ class SysUpdateCLI:
                 )
                 if update.current_package:
                     pkg = update.current_package[:max_pkg_len]
-                    desc = self._format_desc("", f"{label} [dim]|[/] {pkg}")
+                    desc = self._format_desc(
+                        "", f"[bold]{label}[/] [dim]{self._sep}[/] {pkg}"
+                    )
                 else:
-                    desc = self._format_desc("", f"{label} [dim]|[/] {phase_text}")
+                    desc = self._format_desc(
+                        "", f"[bold]{label}[/] [dim]{self._sep} {phase_text}[/]"
+                    )
                 # Transition to determinate progress: set total and completed
                 progress.update(
                     task_id,
@@ -170,7 +201,7 @@ class SysUpdateCLI:
                     eta=update.eta,
                 )
             else:
-                desc = self._format_desc("", label)
+                desc = self._format_desc("", f"[bold]{label}[/]")
                 progress.update(
                     task_id,
                     total=100,
@@ -185,6 +216,8 @@ class SysUpdateCLI:
 
     async def _run_updates(self) -> int:
         """Run all available package manager updates concurrently."""
+        start_time = time.monotonic()
+
         # Check for aria2c availability (for parallel APT downloads)
         downloader = Aria2Downloader()
         aria2_available = await downloader.check_available()
@@ -199,24 +232,17 @@ class SysUpdateCLI:
             (cfg, avail) for cfg, avail in zip(self._updaters, availability)
         ]
 
-        # Collect results by label
+        # Collect results by label, and failures as (label, message) pairs
         results_by_label: dict[str, list[Package]] = {
             cfg.label: [] for cfg in self._updaters
         }
-
-        failure_count = 0
+        failures: list[tuple[str, str]] = []
 
         with Progress(
             TextColumn("  "),
-            StatusColumn(spinner_name="dots", style="white", use_ascii=self._use_ascii),
+            StatusColumn(use_ascii=self._use_ascii),
             TextColumn("{task.description}"),
-            BarColumn(
-                bar_width=BAR_WIDTH,
-                style="dim",
-                complete_style="white",
-                finished_style="green",
-                pulse_style="cyan",
-            ),
+            GradientBarColumn(bar_width=BAR_WIDTH, use_ascii=self._use_ascii),
             PhaseAwareProgressColumn(),
             TimeElapsedColumn(),
             SpeedColumn(),
@@ -232,14 +258,19 @@ class SysUpdateCLI:
                 if is_available:
                     # Start with total=None for indeterminate pulse animation
                     task_id = progress.add_task(
-                        self._format_desc("", cfg.label),
+                        self._format_desc("", f"[bold]{cfg.label}[/]"),
                         total=None,
                         phase="checking",
                     )
                     coroutines.append(self._run_updater(progress, task_id, cfg))
                     labels.append(cfg.label)
-                else:
-                    self.console.print(f"[dim]   {cfg.label} not available[/]")
+
+            skipped = [cfg.label for cfg, avail in available_updaters if not avail]
+            if skipped:
+                # Indented to align with the updater labels in the progress rows
+                self.console.print(
+                    f"     [dim]Not available {self._sep} {', '.join(skipped)}[/]"
+                )
 
             if coroutines:
                 self.console.print()
@@ -248,7 +279,7 @@ class SysUpdateCLI:
                 for label, result in zip(labels, results):
                     if isinstance(result, Exception):
                         self._logger.error(f"{label} update failed: {result}")
-                        failure_count += 1
+                        failures.append((label, str(result) or type(result).__name__))
                     elif isinstance(result, UpdateResult):
                         if result.success:
                             results_by_label[label] = result.packages
@@ -256,12 +287,16 @@ class SysUpdateCLI:
                             self._logger.error(
                                 f"{label} update failed: {result.error_message}"
                             )
-                            failure_count += 1
+                            failures.append((label, result.error_message or ""))
 
         self.console.print()
         self.console.print()
-        self._print_summary(results_by_label)
-        return 1 if failure_count > 0 else 0
+        self._print_summary(
+            results_by_label,
+            elapsed=time.monotonic() - start_time,
+            failures=failures,
+        )
+        return 1 if failures else 0
 
     async def _run_updater(
         self,
@@ -285,10 +320,24 @@ class SysUpdateCLI:
             total=100,
             completed=100,
             success=result.success,
-            description=self._format_desc("", cfg.label),
+            description=self._format_desc("", f"[bold]{cfg.label}[/]"),
         )
         return result
 
-    def _print_summary(self, results_by_label: dict[str, list[Package]]) -> None:
-        """Print minimal summary of updated packages (delegates to ui module)."""
-        print_summary(self.console, results_by_label, self._use_ascii)
+    def _print_summary(
+        self,
+        results_by_label: dict[str, list[Package]],
+        elapsed: float | None = None,
+        failures: list[tuple[str, str]] | None = None,
+    ) -> None:
+        """Print the end-of-run summary (delegates to summary module)."""
+        log_dir = str(get_log_dir()) if failures else None
+        print_summary(
+            self.console,
+            results_by_label,
+            self._use_ascii,
+            elapsed=elapsed,
+            failures=failures,
+            log_dir=log_dir,
+            animate=self._animate,
+        )
