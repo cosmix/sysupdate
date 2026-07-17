@@ -76,17 +76,7 @@ sysupdate self-update
 
 ### Example Output
 
-Startup opens with an animated banner: a truecolor gradient wordmark revealed
-by a diagonal sheen sweeping across the letters (rendered statically when
-output is piped). Progress bars fill with the same gradient, and a sheen
-pulse sweeps each bar while its package manager is still checking.
-
 ![sysupdate in action — animated gradient banner, live truecolor progress bars, and the end-of-run summary](docs/demo.gif)
-
-In the version columns only the part that actually changed is highlighted
-(`3.0.`11 → `3.0.`**13**), the count line gets a quick celebratory sheen sweep,
-and failed updaters are listed with a pointer to their log directory. The
-`self-update` command shares the same look.
 
 _On Fedora, APT is replaced with DNF. On Arch, it's replaced with Pacman.
 Narrow or non-Unicode terminals automatically fall back to compact ASCII art._
