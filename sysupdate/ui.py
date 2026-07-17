@@ -1,18 +1,25 @@
-"""Rich UI components for System Update Manager."""
+"""Rich progress-display components for System Update Manager."""
 
+import math
 import re
 
-from rich.console import Console
 from rich.progress import (
     ProgressColumn,
     SpinnerColumn,
     TaskProgressColumn,
     Task as RichTask,
 )
-from rich.table import Table
 from rich.text import Text
 
-from .updaters.base import Package
+from .banner import (
+    DEFAULT_ACCENT,
+    ERROR_STYLE,
+    SHEEN_RGB,
+    SUCCESS_STYLE,
+    blend_rgb,
+    gradient_rgb,
+    scale_rgb,
+)
 
 # ============================================================================
 # Module-level constants
@@ -24,42 +31,37 @@ DESC_WIDTH = 30
 # Progress thresholds - fraction of progress bar reserved for checking phase
 CHECKING_PROGRESS_END = 0.1
 
-# Gradient colors for ASCII art header (cyan -> blue -> magenta)
-HEADER_COLORS = ["cyan", "dodger_blue2", "blue", "purple", "magenta"]
-
-# Logo width for centering version text under ASCII art header
-LOGO_WIDTH = 50
-
 # Progress bar width in characters
 BAR_WIDTH = 16
 
 # Precompiled pattern for stripping Rich markup tags
-_MARKUP_PATTERN = re.compile(r"\[(green|red|dim|/)\]")
+_MARKUP_PATTERN = re.compile(r"\[[^\]]*\]")
 
 
 class StatusColumn(SpinnerColumn):
-    """Status badge with phase-aware colors and ASCII fallback support."""
+    """Status badge: animated spinner while checking, phase glyphs after."""
 
     # Unicode phase symbols for terminals with full Unicode support
     PHASE_STYLES: dict[str, tuple[str, str]] = {
-        "checking": ("dim", "\u25cb"),
-        "downloading": ("cyan", "\u2193"),
-        "installing": ("yellow", "\u2699"),
-        "complete": ("green", "\u2713"),
-        "error": ("red", "\u2717"),
+        "downloading": ("#22d3ee", "\u2193"),
+        "installing": ("#fbbf24", "\u2699"),
+        "complete": (SUCCESS_STYLE, "\u2713"),
+        "error": (ERROR_STYLE, "\u2717"),
     }
 
     # ASCII fallback symbols for terminals without Unicode support
     ASCII_PHASE_STYLES: dict[str, tuple[str, str]] = {
-        "checking": ("dim", "o"),
-        "downloading": ("cyan", "v"),
-        "installing": ("yellow", "*"),
-        "complete": ("green", "+"),
-        "error": ("red", "x"),
+        "downloading": ("#22d3ee", "v"),
+        "installing": ("#fbbf24", "*"),
+        "complete": (SUCCESS_STYLE, "+"),
+        "error": (ERROR_STYLE, "x"),
     }
 
-    def __init__(self, *args, use_ascii: bool = False, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, use_ascii: bool = False, **kwargs):
+        # The "line" spinner is pure ASCII; "dots" needs braille glyphs
+        kwargs.setdefault("spinner_name", "line" if use_ascii else "dots")
+        kwargs.setdefault("style", DEFAULT_ACCENT)
+        super().__init__(**kwargs)
         self.use_ascii = use_ascii
 
     def render(self, task: RichTask) -> Text:
@@ -68,14 +70,69 @@ class StatusColumn(SpinnerColumn):
         if task.finished:
             if task.fields.get("success", True):
                 symbol = "+" if self.use_ascii else "\u2713"
-                return Text(symbol, style="green")
+                return Text(symbol, style=f"bold {SUCCESS_STYLE}")
             symbol = "x" if self.use_ascii else "\u2717"
-            return Text(symbol, style="red")
+            return Text(symbol, style=f"bold {ERROR_STYLE}")
 
         phase = task.fields.get("phase", "checking")
+        if phase == "checking":
+            # Live spinner while probing for updates
+            return super().render(task)
         default_symbol = "." if self.use_ascii else "\u25cf"
         style, symbol = styles.get(phase, ("white", default_symbol))
         return Text(symbol, style=style)
+
+
+class GradientBarColumn(ProgressColumn):
+    """Progress bar that reveals the banner gradient as it fills.
+
+    The bar is pre-painted with the nebula gradient: filling it uncovers
+    the colors in place, echoing the banner's sheen reveal. Indeterminate
+    tasks show the sheen motif directly \u2014 a soft highlight band sweeping
+    across a dimmed gradient track.
+    """
+
+    # Sheen band width (cells) and sweep speed (cells/second) while pulsing
+    PULSE_SIGMA = 2.0
+    PULSE_SPEED = 14.0
+
+    def __init__(self, bar_width: int = BAR_WIDTH, use_ascii: bool = False) -> None:
+        super().__init__()
+        self.bar_width = bar_width
+        self.use_ascii = use_ascii
+
+    def render(self, task: RichTask) -> Text:
+        width = self.bar_width
+        fill_char = "=" if self.use_ascii else "\u2501"
+        track_char = "-" if self.use_ascii else "\u2501"
+        span = max(width - 1, 1)
+        bar = Text(no_wrap=True)
+
+        if task.total is None:
+            # Indeterminate: sheen band sweeping over a dimmed gradient
+            cycle = width + 6.0 * self.PULSE_SIGMA
+            pos = (task.get_time() * self.PULSE_SPEED) % cycle - 3.0 * self.PULSE_SIGMA
+            for i in range(width):
+                base = scale_rgb(gradient_rgb(i / span), 0.45)
+                glow = math.exp(-(((i - pos) / self.PULSE_SIGMA) ** 2))
+                r, g, b = blend_rgb(base, SHEEN_RGB, glow * 0.9)
+                bar.append(fill_char, style=f"#{r:02x}{g:02x}{b:02x}")
+            return bar
+
+        filled = int(width * min(task.completed / task.total, 1.0)) if task.total else 0
+        failed = task.finished and not task.fields.get("success", True)
+        for i in range(width):
+            if i >= filled:
+                bar.append(track_char, style="dim")
+                continue
+            rgb = gradient_rgb(i / span)
+            if failed:
+                rgb = scale_rgb(blend_rgb(rgb, (248, 113, 113), 0.8), 0.85)
+            elif i == filled - 1 and not task.finished:
+                # Glowing head cell on the advancing edge
+                rgb = blend_rgb(rgb, SHEEN_RGB, 0.6)
+            bar.append(fill_char, style=f"#{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}")
+        return bar
 
 
 class PhaseAwareProgressColumn(TaskProgressColumn):
@@ -118,174 +175,3 @@ class ETAColumn(ProgressColumn):
         return Text(" " * self.ETA_WIDTH, style="dim")
 
 
-def print_header(
-    console: Console,
-    version: str,
-    dry_run: bool,
-    use_ascii: bool,
-) -> None:
-    """Print gradient-colored ASCII art header.
-
-    Args:
-        console: Rich Console instance for output.
-        version: Application version string.
-        dry_run: Whether dry-run mode is active.
-        use_ascii: Whether to use ASCII fallback characters.
-    """
-    # Use regular strings with escaped backslashes to avoid raw string issues
-    lines = [
-        "                                 _       _       ",
-        "   ___ _   _ ___ _   _ _ __   __| | __ _| |_ ___ ",
-        "  / __| | | / __| | | | '_ \\ / _` |/ _` | __/ _ \\",
-        "  \\__ \\ |_| \\__ \\ |_| | |_) | (_| | (_| | ||  __/",
-        "  |___/\\__, |___/\\__,_| .__/ \\__,_|\\__,_|\\__\\___|",
-        "       |___/          |_|                        ",
-    ]
-
-    console.print()
-    for line in lines:
-        text = Text()
-        line_len = len(line)
-        for i, char in enumerate(line):
-            color_idx = int(i / line_len * len(HEADER_COLORS))
-            text.append(
-                char,
-                style=f"bold {HEADER_COLORS[min(color_idx, len(HEADER_COLORS) - 1)]}",
-            )
-        console.print(text)
-
-    # Version centered under the logo
-    version_str = f"v{version}"
-    padding = (LOGO_WIDTH - len(version_str)) // 2
-    version_text = Text()
-    version_text.append(" " * padding + version_str, style="dim")
-    console.print(version_text)
-
-    # Show dry-run indicator if in dry-run mode
-    if dry_run:
-        console.print()
-        console.print("   [dim][DRY RUN] No changes will be made[/]")
-
-    console.print()
-
-
-def print_summary(
-    console: Console,
-    results_by_label: dict[str, list[Package]],
-    use_ascii: bool,
-) -> None:
-    """Print minimal summary of updated packages.
-
-    Args:
-        console: Rich Console instance for output.
-        results_by_label: Dict mapping updater label to list of updated packages.
-        use_ascii: Whether to use ASCII fallback characters.
-    """
-    # Table display configuration per label
-    table_config = {
-        "APT": {
-            "title": "APT Packages",
-            "name_col": "Package",
-            "show_versions": True,
-        },
-        "Flatpak": {
-            "title": "Flatpak Apps",
-            "name_col": "App",
-            "show_versions": False,
-        },
-        "Snap": {"title": "Snap Apps", "name_col": "App", "show_versions": True},
-        "DNF": {
-            "title": "DNF Packages",
-            "name_col": "Package",
-            "show_versions": True,
-        },
-        "Pacman": {
-            "title": "Pacman Packages",
-            "name_col": "Package",
-            "show_versions": True,
-        },
-    }
-
-    # ASCII fallback symbols
-    line_char = "-" if use_ascii else "\u2500"
-    check_char = "+" if use_ascii else "\u2713"
-
-    total = sum(len(pkgs) for pkgs in results_by_label.values())
-    console.print("   [dim]" + line_char * 40 + "[/]")
-
-    if total == 0:
-        console.print()
-        console.print(f"   [green]{check_char}[/] System is up to date")
-        console.print()
-        return
-
-    # Count summary
-    parts = [
-        f"{len(pkgs)} {label}" for label, pkgs in results_by_label.items() if pkgs
-    ]
-    console.print()
-    console.print(
-        f"   [green]{check_char}[/] Updated [bold]{total}[/] packages ({', '.join(parts)})"
-    )
-    console.print()
-
-    # Print tables for each manager with updates
-    for label, packages in results_by_label.items():
-        if not packages:
-            continue
-
-        cfg = table_config.get(
-            label, {"title": label, "name_col": "Package", "show_versions": True}
-        )
-        console.print(f"   [bold]{cfg['title']}[/] [dim]({len(packages)})[/]")
-        console.print()
-        print_package_table(console, packages, cfg["name_col"], cfg["show_versions"], use_ascii)
-        console.print()
-
-    console.print("   [dim]" + line_char * 40 + "[/]")
-    console.print()
-
-
-def print_package_table(
-    console: Console,
-    packages: list[Package],
-    name_col: str,
-    show_versions: bool,
-    use_ascii: bool,
-) -> None:
-    """Print a table of packages.
-
-    Args:
-        console: Rich Console instance for output.
-        packages: List of Package objects to display.
-        name_col: Column header for package name.
-        show_versions: Whether to show old/new version columns.
-        use_ascii: Whether to use ASCII fallback characters.
-    """
-    # ASCII fallback for arrow symbol
-    arrow = "->" if use_ascii else "\u2192"
-
-    table = Table(
-        show_header=True,
-        header_style="dim",
-        box=None,
-        padding=(0, 3),
-        collapse_padding=True,
-    )
-    table.add_column(name_col, style="white")
-
-    if show_versions:
-        table.add_column("Old", style="dim", justify="right")
-        table.add_column("", style="dim", justify="center", width=3)
-        table.add_column("New", style="white", justify="left")
-        for pkg in packages:
-            old_ver = pkg.old_version or "-"
-            new_ver = pkg.new_version or "-"
-            table.add_row(pkg.name, old_ver, arrow, new_ver)
-    else:
-        table.add_column("Branch", style="dim", justify="right")
-        for pkg in packages:
-            branch = pkg.new_version or pkg.old_version or "stable"
-            table.add_row(pkg.name, branch)
-
-    console.print(table)
