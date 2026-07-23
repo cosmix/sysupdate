@@ -66,7 +66,13 @@ async def run_self_update(check_only: bool = False) -> int:
     """
     from sysupdate import __version__
 
-    from ..banner import gradient_rule
+    from ..banner import (
+        DEFAULT_ACCENT,
+        ERROR_STYLE,
+        SUCCESS_STYLE,
+        WARNING_STYLE,
+        gradient_rule,
+    )
 
     console = Console()
     use_ascii = "utf" not in (console.encoding or "").lower()
@@ -81,36 +87,36 @@ async def run_self_update(check_only: bool = False) -> int:
     console.print()
     console.print(gradient_rule(48, use_ascii, indent=2))
     console.print()
-    console.print(
-        f"  [bold]self-update[/] [dim]{sep} Checking for new releases[/]"
-    )
+    console.print(f"  [bold]self-update[/] [dim]{sep} Checking for new releases[/]")
     console.print()
 
     try:
         check_result = await updater.check_for_update(__version__)
     except Exception as e:
-        console.print(f"  [bold #f87171]{cross} Update check failed[/] [dim]{sep}[/] {escape(str(e))}")
+        console.print(
+            f"  [bold {ERROR_STYLE}]{cross} Update check failed[/] [dim]{sep}[/] {escape(str(e))}"
+        )
         return 1
 
     if check_result.error_message:
         console.print(
-            f"  [bold #f87171]{cross}[/] {escape(check_result.error_message)}"
+            f"  [bold {ERROR_STYLE}]{cross}[/] {escape(check_result.error_message)}"
         )
         return 1
 
     if not check_result.update_available:
         console.print(
-            f"  [bold #4ade80]{check}[/] Up to date"
+            f"  [bold {SUCCESS_STYLE}]{check}[/] Up to date"
             f" [dim]{sep} v{check_result.current_version} is the latest version[/]"
         )
         console.print()
         return 0
 
     latest = check_result.latest_version or ""
-    console.print(f"  [bold #fbbf24]{up} Update available[/]")
+    console.print(f"  [bold {WARNING_STYLE}]{up} Update available[/]")
     version_line = Text("  ")
     version_line.append_text(
-        _version_arrow(check_result.current_version, latest, arrow, "#8b5cf6")
+        _version_arrow(check_result.current_version, latest, arrow, DEFAULT_ACCENT)
     )
     console.print(version_line)
     console.print()
@@ -118,15 +124,16 @@ async def run_self_update(check_only: bool = False) -> int:
     # If check-only mode, stop here
     if check_only:
         console.print(
-            "  [dim]Run[/] [bold]sysupdate self-update[/]"
-            " [dim]to install the update[/]"
+            "  [dim]Run[/] [bold]sysupdate self-update[/] [dim]to install the update[/]"
         )
         console.print()
         return 0
 
     # Guard against None release (should never happen due to update_available check)
     if check_result.release is None:
-        console.print(f"  [bold #f87171]{cross}[/] No release information available")
+        console.print(
+            f"  [bold {ERROR_STYLE}]{cross}[/] No release information available"
+        )
         return 1
 
     # Perform update with progress bar
@@ -135,7 +142,7 @@ async def run_self_update(check_only: bool = False) -> int:
     with Progress(
         TextColumn("  "),
         SpinnerColumn(
-            spinner_name="line" if use_ascii else "dots", style="#8b5cf6"
+            spinner_name="line" if use_ascii else "dots", style=DEFAULT_ACCENT
         ),
         TextColumn("{task.description}"),
         GradientBarColumn(bar_width=24, use_ascii=use_ascii),
@@ -156,17 +163,22 @@ async def run_self_update(check_only: bool = False) -> int:
                 progress_callback=progress_callback,
             )
         except Exception as e:
-            console.print(f"\n  [bold #f87171]{cross} Update failed[/] [dim]{sep}[/] {escape(str(e))}")
+            console.print(
+                f"\n  [bold {ERROR_STYLE}]{cross} Update failed[/] [dim]{sep}[/] {escape(str(e))}"
+            )
             return 1
 
     # Display update results
     console.print()
     if update_result.success:
         done = Text("  ")
-        done.append(f"{check} Updated ", style="bold #4ade80")
+        done.append(f"{check} Updated ", style=f"bold {SUCCESS_STYLE}")
         done.append_text(
             _version_arrow(
-                update_result.old_version, update_result.new_version, arrow, "#8b5cf6"
+                update_result.old_version,
+                update_result.new_version,
+                arrow,
+                DEFAULT_ACCENT,
             )
         )
         console.print(done)
@@ -176,7 +188,7 @@ async def run_self_update(check_only: bool = False) -> int:
         return 0
     else:
         console.print(
-            f"  [bold #f87171]{cross} Update failed[/]"
+            f"  [bold {ERROR_STYLE}]{cross} Update failed[/]"
             f" [dim]{sep}[/] {escape(update_result.error_message)}"
         )
         console.print()

@@ -2,11 +2,14 @@
 
 import math
 import re
+from typing import cast
 
 from rich.progress import (
     ProgressColumn,
     SpinnerColumn,
     TaskProgressColumn,
+)
+from rich.progress import (
     Task as RichTask,
 )
 from rich.text import Text
@@ -14,8 +17,10 @@ from rich.text import Text
 from .banner import (
     DEFAULT_ACCENT,
     ERROR_STYLE,
+    INFO_STYLE,
     SHEEN_RGB,
     SUCCESS_STYLE,
+    WARNING_STYLE,
     blend_rgb,
     gradient_rgb,
     scale_rgb,
@@ -43,16 +48,16 @@ class StatusColumn(SpinnerColumn):
 
     # Unicode phase symbols for terminals with full Unicode support
     PHASE_STYLES: dict[str, tuple[str, str]] = {
-        "downloading": ("#22d3ee", "\u2193"),
-        "installing": ("#fbbf24", "\u2699"),
+        "downloading": (INFO_STYLE, "\u2193"),
+        "installing": (WARNING_STYLE, "\u2699"),
         "complete": (SUCCESS_STYLE, "\u2713"),
         "error": (ERROR_STYLE, "\u2717"),
     }
 
     # ASCII fallback symbols for terminals without Unicode support
     ASCII_PHASE_STYLES: dict[str, tuple[str, str]] = {
-        "downloading": ("#22d3ee", "v"),
-        "installing": ("#fbbf24", "*"),
+        "downloading": (INFO_STYLE, "v"),
+        "installing": (WARNING_STYLE, "*"),
         "complete": (SUCCESS_STYLE, "+"),
         "error": (ERROR_STYLE, "x"),
     }
@@ -76,8 +81,8 @@ class StatusColumn(SpinnerColumn):
 
         phase = task.fields.get("phase", "checking")
         if phase == "checking":
-            # Live spinner while probing for updates
-            return super().render(task)
+            # Live spinner while probing for updates (a Text frame at runtime)
+            return cast(Text, super().render(task))
         default_symbol = "." if self.use_ascii else "\u25cf"
         style, symbol = styles.get(phase, ("white", default_symbol))
         return Text(symbol, style=style)
@@ -173,5 +178,3 @@ class ETAColumn(ProgressColumn):
                 text = text[: self.ETA_WIDTH]
             return Text(text, style="dim")
         return Text(" " * self.ETA_WIDTH, style="dim")
-
-

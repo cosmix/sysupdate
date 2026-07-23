@@ -4,42 +4,43 @@ import asyncio
 import time
 from dataclasses import dataclass
 from typing import Callable
-from rich.console import Console
+
 from rich.progress import (
     Progress,
-    TextColumn,
     TaskID,
+    TextColumn,
     TimeElapsedColumn,
 )
 
 from . import __version__
-from .banner import show_banner
+from .banner import WARNING_STYLE, show_banner
+from .console import console
 from .summary import print_summary
 from .ui import (
-    StatusColumn,
+    _MARKUP_PATTERN,
+    BAR_WIDTH,
+    DESC_WIDTH,
+    ETAColumn,
     GradientBarColumn,
     PhaseAwareProgressColumn,
     SpeedColumn,
-    ETAColumn,
-    BAR_WIDTH,
-    DESC_WIDTH,
-    _MARKUP_PATTERN,
-)
-from .updaters.base import (
-    UpdatePhase,
-    UpdateProgress,
-    Package,
-    UpdaterProtocol,
-    UpdateResult,
+    StatusColumn,
 )
 from .updaters.apt import AptUpdater
-from .updaters.flatpak import FlatpakUpdater
-from .updaters.snap import SnapUpdater
-from .updaters.dnf import DnfUpdater
-from .updaters.pacman import PacmanUpdater
 from .updaters.aria2_downloader import Aria2Downloader
-from .utils.logging import get_log_dir, setup_logging
+from .updaters.base import (
+    Package,
+    UpdatePhase,
+    UpdateProgress,
+    UpdateResult,
+    UpdaterProtocol,
+)
+from .updaters.dnf import DnfUpdater
+from .updaters.flatpak import FlatpakUpdater
+from .updaters.pacman import PacmanUpdater
+from .updaters.snap import SnapUpdater
 from .utils.aria2 import prompt_install_aria2
+from .utils.logging import get_log_dir, setup_logging
 
 
 @dataclass
@@ -62,7 +63,7 @@ class SysUpdateCLI:
     ) -> None:
         self.verbose = verbose
         self.dry_run = dry_run
-        self.console = Console()
+        self.console = console
         self._logger = setup_logging(verbose)
         self._use_ascii = not self._supports_unicode()
         self._sep = "|" if self._use_ascii else "·"
@@ -91,7 +92,7 @@ class SysUpdateCLI:
             symbol = "!" if self._use_ascii else "⚡"
             dash = "--" if self._use_ascii else "—"
             self.console.print(
-                f"\n[bold #fbbf24]{symbol} Interrupted[/]"
+                f"\n[bold {WARNING_STYLE}]{symbol} Interrupted[/]"
                 f"[dim] {dash} no further changes made[/]"
             )
             return 130
@@ -225,9 +226,9 @@ class SysUpdateCLI:
             await prompt_install_aria2(self.console)
 
         # Check which updaters are available
-        availability = await asyncio.gather(*[
-            cfg.updater.check_available() for cfg in self._updaters
-        ])
+        availability = await asyncio.gather(
+            *[cfg.updater.check_available() for cfg in self._updaters]
+        )
         available_updaters = [
             (cfg, avail) for cfg, avail in zip(self._updaters, availability)
         ]
@@ -273,7 +274,7 @@ class SysUpdateCLI:
                 )
 
             if coroutines:
-                self.console.print()
+                self.console.line()
                 results = await asyncio.gather(*coroutines, return_exceptions=True)
 
                 for label, result in zip(labels, results):
@@ -289,8 +290,7 @@ class SysUpdateCLI:
                             )
                             failures.append((label, result.error_message or ""))
 
-        self.console.print()
-        self.console.print()
+        self.console.line(2)
         self._print_summary(
             results_by_label,
             elapsed=time.monotonic() - start_time,

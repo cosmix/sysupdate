@@ -32,7 +32,9 @@ TEXT_RGB: RGB = (226, 232, 240)
 
 # Shared identity colors used across the UI
 DEFAULT_ACCENT = "#8b5cf6"
+INFO_STYLE = "#22d3ee"
 SUCCESS_STYLE = "#4ade80"
+WARNING_STYLE = "#fbbf24"
 ERROR_STYLE = "#f87171"
 
 # Terminal cells are roughly twice as tall as wide, so a slope of two
@@ -309,6 +311,6 @@ def show_banner(
         dash = "--" if use_ascii else "—"
         console.print()
         console.print(
-            f"   [bold #fbbf24]DRY RUN[/] [dim]{dash} no changes will be made[/]"
+            f"   [bold {WARNING_STYLE}]DRY RUN[/] [dim]{dash} no changes will be made[/]"
         )
     console.print()
