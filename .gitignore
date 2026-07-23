@@ -11,3 +11,5 @@ sysupdate/_version.py
 # PyApp build artifacts
 .pyapp-src/
 sysupdate-local
+
+node_modules
