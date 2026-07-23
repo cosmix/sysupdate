@@ -1,13 +1,14 @@
 """Tests for package updater backends."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from sysupdate.updaters.base import Package, UpdateProgress, UpdateResult, UpdatePhase
+import pytest
+
 from sysupdate.updaters.apt import AptUpdater
+from sysupdate.updaters.base import Package, UpdatePhase, UpdateProgress, UpdateResult
 from sysupdate.updaters.flatpak import FlatpakUpdater
-from sysupdate.updaters.snap import SnapUpdater
 from sysupdate.updaters.pacman import PacmanUpdater
+from sysupdate.updaters.snap import SnapUpdater
 
 
 class TestPackage:

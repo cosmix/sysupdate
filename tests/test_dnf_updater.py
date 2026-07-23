@@ -1,9 +1,10 @@
 """Tests for DNF package manager updater."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from sysupdate.updaters.base import UpdateProgress, UpdatePhase
+import pytest
+
+from sysupdate.updaters.base import UpdatePhase, UpdateProgress
 from sysupdate.updaters.dnf import DnfUpdater
 
 

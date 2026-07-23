@@ -1,6 +1,7 @@
 """Tests for Rich UI components (sysupdate/ui.py)."""
 
-from rich.progress import Progress, Task as RichTask
+from rich.progress import Progress
+from rich.progress import Task as RichTask
 
 from sysupdate.ui import GradientBarColumn, StatusColumn
 

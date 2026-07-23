@@ -1,13 +1,13 @@
 """Tests for output parsing utilities."""
 
 from sysupdate.utils.parsing import (
+    AptUpdateProgressTracker,
+    AptUpgradeProgressTracker,
+    DnfUpgradeProgressTracker,
     clean_flatpak_ref,
     parse_apt_output,
-    parse_flatpak_output,
     parse_dnf_check_output,
-    AptUpgradeProgressTracker,
-    AptUpdateProgressTracker,
-    DnfUpgradeProgressTracker,
+    parse_flatpak_output,
 )
 
 

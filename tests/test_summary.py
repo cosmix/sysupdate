@@ -13,7 +13,6 @@ from sysupdate.summary import (
 )
 from sysupdate.updaters.base import Package
 
-
 ANSI_PATTERN = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]")
 
 

@@ -9,7 +9,6 @@ from sysupdate.updaters.flatpak import FlatpakUpdater
 from sysupdate.updaters.pacman import PacmanUpdater
 from sysupdate.updaters.snap import SnapUpdater
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

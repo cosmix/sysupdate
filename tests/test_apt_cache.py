@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from sysupdate.updaters.apt_cache import PackageInfo, AptCacheWrapper
+from sysupdate.updaters.apt_cache import AptCacheWrapper, PackageInfo
 
 
 class TestPackageInfo:

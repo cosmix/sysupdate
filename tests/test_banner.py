@@ -10,6 +10,7 @@ from sysupdate.banner import (
     BLOCK_LOGO,
     FIGLET_LOGO,
     GRADIENT_STOPS,
+    _select_logo,
     banner_rows,
     build_frame,
     gradient_rgb,
@@ -18,9 +19,7 @@ from sysupdate.banner import (
     sheen_intensity,
     sheen_sweep_line,
     show_banner,
-    _select_logo,
 )
-
 
 ANSI_PATTERN = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]")
 

@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from sysupdate.selfupdate.github import Release, ReleaseAsset
 from sysupdate.selfupdate.updater import SelfUpdater, UpdateCheckResult, UpdateResult
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

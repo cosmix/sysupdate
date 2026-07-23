@@ -8,10 +8,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from sysupdate.selfupdate.binary import (
+    can_write_to_path,
     get_architecture,
     get_expected_asset_name,
     replace_binary,
-    can_write_to_path,
 )
 from sysupdate.selfupdate.checksum import (
     compute_sha256,
@@ -765,8 +765,9 @@ class TestSelfUpdaterE2E:
 
     async def test_perform_update_full_flow_x86_64(self, tmp_path, mock_release):
         """Test complete update flow with mocked network on x86_64."""
-        from sysupdate.selfupdate.updater import SelfUpdater
         import hashlib
+
+        from sysupdate.selfupdate.updater import SelfUpdater
 
         # Create fake current binary
         current_binary = tmp_path / "sysupdate"
@@ -831,8 +832,9 @@ class TestSelfUpdaterE2E:
 
     async def test_perform_update_cross_filesystem(self, tmp_path, mock_release):
         """Test update when temp directory is on different filesystem."""
-        from sysupdate.selfupdate.updater import SelfUpdater
         import hashlib
+
+        from sysupdate.selfupdate.updater import SelfUpdater
 
         # Create fake current binary
         current_binary = tmp_path / "sysupdate"
@@ -954,8 +956,9 @@ class TestSelfUpdaterE2E:
         self, tmp_path, mock_release
     ):
         """Test that temp directory cleanup doesn't delete the replaced binary."""
-        from sysupdate.selfupdate.updater import SelfUpdater
         import hashlib
+
+        from sysupdate.selfupdate.updater import SelfUpdater
 
         current_binary = tmp_path / "sysupdate"
         current_binary.write_bytes(b"old")
