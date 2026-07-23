@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 
-
 # Precompiled regex patterns for APT upgrade progress tracking
 _COUNT_PATTERN = re.compile(r"(\d+)\s+upgraded")
 _GET_PATTERN = re.compile(r"Get:(\d+)\s+\S+\s+(\S+)\s+")

@@ -143,7 +143,10 @@ class SelfUpdater:
                 logger.warning(
                     "Cannot compare non-numeric version components: "
                     "current=%r, latest=%r (parts: %r vs %r)",
-                    current, latest, cur_part, lat_part,
+                    current,
+                    latest,
+                    cur_part,
+                    lat_part,
                 )
                 return False
 

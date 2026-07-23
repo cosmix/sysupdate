@@ -146,10 +146,22 @@ def parse_flatpak_output(output: str) -> list[Package]:
 # import these classes from sysupdate.utils.parsing will continue to work.
 # Lazy imports via __getattr__ to avoid circular import with updaters package.
 _COMPAT_REEXPORTS = {
-    "AptUpgradeProgressTracker": ("sysupdate.updaters.apt_parsing", "AptUpgradeProgressTracker"),
-    "AptUpdateProgressTracker": ("sysupdate.updaters.apt_parsing", "AptUpdateProgressTracker"),
-    "DnfUpgradeProgressTracker": ("sysupdate.updaters.dnf_parsing", "DnfUpgradeProgressTracker"),
-    "parse_dnf_check_output": ("sysupdate.updaters.dnf_parsing", "parse_dnf_check_output"),
+    "AptUpgradeProgressTracker": (
+        "sysupdate.updaters.apt_parsing",
+        "AptUpgradeProgressTracker",
+    ),
+    "AptUpdateProgressTracker": (
+        "sysupdate.updaters.apt_parsing",
+        "AptUpdateProgressTracker",
+    ),
+    "DnfUpgradeProgressTracker": (
+        "sysupdate.updaters.dnf_parsing",
+        "DnfUpgradeProgressTracker",
+    ),
+    "parse_dnf_check_output": (
+        "sysupdate.updaters.dnf_parsing",
+        "parse_dnf_check_output",
+    ),
 }
 
 
@@ -158,6 +170,7 @@ def __getattr__(name: str):  # noqa: E302
     if name in _COMPAT_REEXPORTS:
         module_path, attr_name = _COMPAT_REEXPORTS[name]
         import importlib
+
         module = importlib.import_module(module_path)
         return getattr(module, attr_name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

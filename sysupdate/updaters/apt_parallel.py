@@ -4,17 +4,17 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 
-from .base import (
-    Package,
-    UpdateProgress,
-    UpdateResult,
-    UpdatePhase,
-    ProgressCallback,
-    create_scaled_callback,
-)
+from ..utils.logging import UpdateLogger
 from .apt_cache import AptCacheWrapper
 from .aria2_downloader import Aria2Downloader
-from ..utils.logging import UpdateLogger
+from .base import (
+    Package,
+    ProgressCallback,
+    UpdatePhase,
+    UpdateProgress,
+    UpdateResult,
+    create_scaled_callback,
+)
 
 
 async def run_parallel_apt_update(

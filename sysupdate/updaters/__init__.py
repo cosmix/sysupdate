@@ -1,11 +1,11 @@
 """Package manager update backends."""
 
-from .base import BaseUpdater, Package, UpdateResult, UpdaterProtocol
 from .apt import AptUpdater
-from .flatpak import FlatpakUpdater
-from .snap import SnapUpdater
+from .base import BaseUpdater, Package, UpdateResult, UpdaterProtocol
 from .dnf import DnfUpdater
+from .flatpak import FlatpakUpdater
 from .pacman import PacmanUpdater
+from .snap import SnapUpdater
 
 __all__ = [
     "BaseUpdater",

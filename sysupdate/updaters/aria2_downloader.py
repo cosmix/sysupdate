@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
-from .apt_cache import PackageInfo, APT_ARCHIVES_DIR, APT_PARTIAL_DIR
+from .apt_cache import APT_ARCHIVES_DIR, APT_PARTIAL_DIR, PackageInfo
 
 
 @dataclass

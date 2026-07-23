@@ -3,16 +3,16 @@
 import asyncio
 import re
 
+from ..utils import command_available
 from .base import (
     BaseUpdater,
     Package,
     PackageStatus,
-    UpdateProgress,
-    UpdatePhase,
     ProgressCallback,
+    UpdatePhase,
+    UpdateProgress,
     read_process_lines,
 )
-from ..utils import command_available
 
 
 class PacmanUpdater(BaseUpdater):
@@ -280,9 +280,7 @@ class PacmanUpdater(BaseUpdater):
                     continue
 
                 # Parse download progress
-                download_match = re.search(
-                    r"downloading\s+(\S+)", line, re.IGNORECASE
-                )
+                download_match = re.search(r"downloading\s+(\S+)", line, re.IGNORECASE)
                 if download_match and in_downloading_phase:
                     current_package = download_match.group(1)
                     download_count += 1

@@ -5,9 +5,9 @@ from __future__ import annotations
 import abc
 import asyncio
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import AsyncIterator, Protocol, Callable
 from datetime import datetime
+from enum import Enum
+from typing import AsyncIterator, Callable, Protocol
 
 
 class UpdatePhase(Enum):
@@ -126,7 +126,10 @@ def create_scaled_callback(
 class UpdaterProtocol(Protocol):
     """Protocol defining the interface for package updaters."""
 
-    name: str
+    @property
+    def name(self) -> str:
+        """Display name for this updater."""
+        ...
 
     async def check_available(self) -> bool:
         """Check if this updater is available on the system."""
@@ -186,7 +189,7 @@ async def read_process_lines(
             else:
                 split_pos = min(newline_pos, cr_pos)
             line = buffer[:split_pos].strip()
-            buffer = buffer[split_pos + 1:]
+            buffer = buffer[split_pos + 1 :]
             if line:
                 yield line
 
@@ -268,22 +271,26 @@ class BaseUpdater(abc.ABC):
                 callback(progress)
 
         try:
-            report(UpdateProgress(
-                phase=UpdatePhase.CHECKING,
-                progress=0.0,
-                message=f"Checking for {self.name.split()[0]} updates...",
-            ))
+            report(
+                UpdateProgress(
+                    phase=UpdatePhase.CHECKING,
+                    progress=0.0,
+                    message=f"Checking for {self.name.split()[0]} updates...",
+                )
+            )
 
             if dry_run:
                 packages = await self.check_updates()
                 result.packages = packages
                 result.success = True
-                report(UpdateProgress(
-                    phase=UpdatePhase.COMPLETE,
-                    progress=1.0,
-                    completed_packages=len(packages),
-                    total_packages=len(packages),
-                ))
+                report(
+                    UpdateProgress(
+                        phase=UpdatePhase.COMPLETE,
+                        progress=1.0,
+                        completed_packages=len(packages),
+                        total_packages=len(packages),
+                    )
+                )
             else:
                 scaled_callback = create_scaled_callback(
                     report,
@@ -296,29 +303,37 @@ class BaseUpdater(abc.ABC):
                 result.success = success
                 result.error_message = error
                 if success:
-                    report(UpdateProgress(
-                        phase=UpdatePhase.COMPLETE,
-                        progress=1.0,
-                        completed_packages=len(packages),
-                        total_packages=len(packages),
-                    ))
+                    report(
+                        UpdateProgress(
+                            phase=UpdatePhase.COMPLETE,
+                            progress=1.0,
+                            completed_packages=len(packages),
+                            total_packages=len(packages),
+                        )
+                    )
                 else:
-                    report(UpdateProgress(
-                        phase=UpdatePhase.ERROR,
-                        message=error,
-                    ))
+                    report(
+                        UpdateProgress(
+                            phase=UpdatePhase.ERROR,
+                            message=error,
+                        )
+                    )
         except FileNotFoundError:
             result.error_message = f"{self.name} not found"
-            report(UpdateProgress(
-                phase=UpdatePhase.ERROR,
-                message=result.error_message,
-            ))
+            report(
+                UpdateProgress(
+                    phase=UpdatePhase.ERROR,
+                    message=result.error_message,
+                )
+            )
         except Exception as e:
             result.error_message = str(e)
-            report(UpdateProgress(
-                phase=UpdatePhase.ERROR,
-                message=str(e),
-            ))
+            report(
+                UpdateProgress(
+                    phase=UpdatePhase.ERROR,
+                    message=str(e),
+                )
+            )
         finally:
             if self._process:
                 try:

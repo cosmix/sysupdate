@@ -4,16 +4,16 @@ import asyncio
 import os
 import re
 
+from ..utils import command_available
+from ..utils.parsing import clean_flatpak_ref, parse_flatpak_output
 from .base import (
     BaseUpdater,
     Package,
-    UpdateProgress,
-    UpdatePhase,
     ProgressCallback,
+    UpdatePhase,
+    UpdateProgress,
     read_process_lines,
 )
-from ..utils import command_available
-from ..utils.parsing import clean_flatpak_ref, parse_flatpak_output
 
 # Skip patterns for filtering runtime/extension packages
 FLATPAK_SKIP_PATTERNS = frozenset([
@@ -146,9 +146,7 @@ class FlatpakUpdater(BaseUpdater):
                     pct = int(download_match.group(1))
 
                     # Try to extract current app name
-                    app_match = re.search(
-                        r"(?:Downloading|Fetching)\s+(\S+)", line
-                    )
+                    app_match = re.search(r"(?:Downloading|Fetching)\s+(\S+)", line)
                     if app_match:
                         current_app = clean_flatpak_ref(app_match.group(1))
 
@@ -194,18 +192,17 @@ class FlatpakUpdater(BaseUpdater):
                 if any(
                     marker in line.lower()
                     for marker in ["done", "installed", "updated"]
-                ):
-                    if not any(skip in line for skip in FLATPAK_SKIP_PATTERNS):
-                        completed += 1
-                        report(
-                            UpdateProgress(
-                                phase=UpdatePhase.INSTALLING,
-                                progress=completed / max(total_apps, 1),
-                                total_packages=total_apps,
-                                completed_packages=completed,
-                                current_package=current_app,
-                            )
+                ) and not any(skip in line for skip in FLATPAK_SKIP_PATTERNS):
+                    completed += 1
+                    report(
+                        UpdateProgress(
+                            phase=UpdatePhase.INSTALLING,
+                            progress=completed / max(total_apps, 1),
+                            total_packages=total_apps,
+                            completed_packages=completed,
+                            current_package=current_app,
                         )
+                    )
 
             await self._process.wait()
 

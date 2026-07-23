@@ -3,16 +3,16 @@
 import asyncio
 import re
 
+from ..utils import command_available
 from .base import (
     BaseUpdater,
     Package,
     PackageStatus,
-    UpdateProgress,
-    UpdatePhase,
     ProgressCallback,
+    UpdatePhase,
+    UpdateProgress,
     read_process_lines,
 )
-from ..utils import command_available
 
 
 class DnfUpdater(BaseUpdater):
@@ -265,9 +265,7 @@ class DnfUpdater(BaseUpdater):
 
                 # Parse completion lines
                 if line.startswith("Upgraded:") or line.startswith("Installed:"):
-                    upgraded_match = re.search(
-                        r"^(Upgraded|Installed):\s+(\S+)", line
-                    )
+                    upgraded_match = re.search(r"^(Upgraded|Installed):\s+(\S+)", line)
                     if upgraded_match:
                         full_name = upgraded_match.group(2)
                         pkg_name_match = re.match(r"^(.+?)-[0-9]", full_name)
@@ -295,12 +293,8 @@ class DnfUpdater(BaseUpdater):
                                     status=PackageStatus.COMPLETE,
                                 )
                             )
-                            progress = (
-                                0.5 + (completed / max(total_packages, 1)) * 0.5
-                            )
-                            last_progress_report = max(
-                                last_progress_report, progress
-                            )
+                            progress = 0.5 + (completed / max(total_packages, 1)) * 0.5
+                            last_progress_report = max(last_progress_report, progress)
                             report(
                                 UpdateProgress(
                                     phase=UpdatePhase.INSTALLING,

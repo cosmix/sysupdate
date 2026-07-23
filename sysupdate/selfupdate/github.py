@@ -103,19 +103,27 @@ class GitHubClient:
                         delay = 1 << attempt  # 1, 2, 4
                         logger.warning(
                             "Request to %s returned %d, retrying in %ds (attempt %d/%d)",
-                            url, response.status, delay, attempt + 1, max_retries,
+                            url,
+                            response.status,
+                            delay,
+                            attempt + 1,
+                            max_retries,
                         )
                         await asyncio.sleep(delay)
                         continue
                     raise last_error
                 return response
-            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            except (TimeoutError, aiohttp.ClientError) as e:
                 last_error = e
                 if attempt < max_retries - 1:
                     delay = 1 << attempt
                     logger.warning(
                         "Request to %s failed with %s, retrying in %ds (attempt %d/%d)",
-                        url, e, delay, attempt + 1, max_retries,
+                        url,
+                        e,
+                        delay,
+                        attempt + 1,
+                        max_retries,
                     )
                     await asyncio.sleep(delay)
                     continue
@@ -144,7 +152,9 @@ class GitHubClient:
                 if content_length and int(content_length) > MAX_API_RESPONSE_BYTES:
                     logger.error(
                         "API response from %s exceeds size limit: %s bytes > %d byte limit",
-                        url, content_length, MAX_API_RESPONSE_BYTES,
+                        url,
+                        content_length,
+                        MAX_API_RESPONSE_BYTES,
                     )
                     return None
 
@@ -175,7 +185,7 @@ class GitHubClient:
             finally:
                 await response.release()
 
-        except (aiohttp.ClientError, asyncio.TimeoutError, KeyError, json.JSONDecodeError):
+        except (TimeoutError, aiohttp.ClientError, KeyError, json.JSONDecodeError):
             return None
 
     async def download_asset(
@@ -211,7 +221,9 @@ class GitHubClient:
                 if total_size > MAX_BINARY_DOWNLOAD_BYTES:
                     logger.error(
                         "Binary download from %s exceeds size limit: %d bytes > %d byte limit",
-                        url, total_size, MAX_BINARY_DOWNLOAD_BYTES,
+                        url,
+                        total_size,
+                        MAX_BINARY_DOWNLOAD_BYTES,
                     )
                     if progress_callback:
                         progress_callback(
@@ -233,7 +245,9 @@ class GitHubClient:
                             logger.error(
                                 "Binary download from %s exceeded size limit during transfer: "
                                 "%d bytes received > %d byte limit",
-                                url, downloaded, MAX_BINARY_DOWNLOAD_BYTES,
+                                url,
+                                downloaded,
+                                MAX_BINARY_DOWNLOAD_BYTES,
                             )
                             f.close()
                             dest_path.unlink(missing_ok=True)
@@ -260,7 +274,7 @@ class GitHubClient:
             finally:
                 await response.release()
 
-        except (aiohttp.ClientError, asyncio.TimeoutError, OSError):
+        except (TimeoutError, aiohttp.ClientError, OSError):
             if progress_callback:
                 progress_callback(0.0, "Download failed")
             return False

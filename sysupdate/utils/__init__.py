@@ -3,9 +3,8 @@
 import asyncio
 import time
 
+from .logging import get_log_path, setup_logging
 from .parsing import parse_apt_output, parse_flatpak_output
-from .logging import setup_logging, get_log_path
-
 
 # Cache TTL in seconds (5 minutes)
 _CACHE_TTL_SECONDS = 300
@@ -37,7 +36,8 @@ async def command_available(command: str, *args: str) -> bool:
 
     try:
         proc = await asyncio.create_subprocess_exec(
-            command, *args,
+            command,
+            *args,
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
         )

@@ -5,21 +5,21 @@ import os
 import re
 from datetime import datetime
 
-from .base import (
-    BaseUpdater,
-    Package,
-    UpdateProgress,
-    UpdateResult,
-    UpdatePhase,
-    ProgressCallback,
-    create_scaled_callback,
-)
-from .apt_cache import is_apt_available
-from .apt_parallel import run_parallel_apt_update
-from .apt_parsing import AptUpgradeProgressTracker, AptUpdateProgressTracker
 from ..utils import command_available
 from ..utils.logging import UpdateLogger
 from ..utils.parsing import parse_apt_output
+from .apt_cache import is_apt_available
+from .apt_parallel import run_parallel_apt_update
+from .apt_parsing import AptUpdateProgressTracker, AptUpgradeProgressTracker
+from .base import (
+    BaseUpdater,
+    Package,
+    ProgressCallback,
+    UpdatePhase,
+    UpdateProgress,
+    UpdateResult,
+    create_scaled_callback,
+)
 
 
 class AptUpdater(BaseUpdater):
@@ -46,14 +46,20 @@ class AptUpdater(BaseUpdater):
         packages: list[Package] = []
         try:
             proc = await asyncio.create_subprocess_exec(
-                "sudo", "apt", "update",
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                "sudo",
+                "apt",
+                "update",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
             await proc.communicate()
 
             proc = await asyncio.create_subprocess_exec(
-                "apt", "list", "--upgradable",
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                "apt",
+                "list",
+                "--upgradable",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
             stdout, _ = await proc.communicate()
 
@@ -64,11 +70,13 @@ class AptUpdater(BaseUpdater):
                     r"(\S+)/\S+\s+(\S+)\s+\S+\s+\[upgradable from:\s+(\S+)\]", line
                 )
                 if match:
-                    packages.append(Package(
-                        name=match.group(1),
-                        new_version=match.group(2),
-                        old_version=match.group(3),
-                    ))
+                    packages.append(
+                        Package(
+                            name=match.group(1),
+                            new_version=match.group(2),
+                            old_version=match.group(3),
+                        )
+                    )
         except FileNotFoundError:
             return []
         except Exception as e:
@@ -76,7 +84,9 @@ class AptUpdater(BaseUpdater):
                 self._logger.log(f"Error checking updates: {e}")
         return packages
 
-    async def _do_upgrade(self, report: ProgressCallback) -> tuple[list[Package], bool, str]:
+    async def _do_upgrade(
+        self, report: ProgressCallback
+    ) -> tuple[list[Package], bool, str]:
         """Delegate to _run_apt_upgrade (required by BaseUpdater ABC)."""
         return await self._run_apt_upgrade(report)
 
@@ -87,7 +97,9 @@ class AptUpdater(BaseUpdater):
         return await command_available("aria2c", "--version")
 
     async def run_update(
-        self, callback: ProgressCallback | None = None, dry_run: bool = False,
+        self,
+        callback: ProgressCallback | None = None,
+        dry_run: bool = False,
     ) -> UpdateResult:
         """Run the APT update process, dispatching to parallel or sequential."""
         if self._use_parallel and await self._can_use_parallel():
@@ -95,7 +107,9 @@ class AptUpdater(BaseUpdater):
         return await self._run_sequential_update(callback, dry_run)
 
     async def _run_sequential_update(
-        self, callback: ProgressCallback | None = None, dry_run: bool = False,
+        self,
+        callback: ProgressCallback | None = None,
+        dry_run: bool = False,
     ) -> UpdateResult:
         """Run the APT update process using sequential apt full-upgrade."""
         result = UpdateResult(success=False)
@@ -107,12 +121,17 @@ class AptUpdater(BaseUpdater):
                 callback(progress)
 
         try:
-            report(UpdateProgress(
-                phase=UpdatePhase.CHECKING, progress=0.0,
-                message="Refreshing package lists",
-            ))
+            report(
+                UpdateProgress(
+                    phase=UpdatePhase.CHECKING,
+                    progress=0.0,
+                    message="Refreshing package lists",
+                )
+            )
             checking_callback = create_scaled_callback(
-                report, scale_start=0.0, scale_end=checking_end,
+                report,
+                scale_start=0.0,
+                scale_end=checking_end,
                 phases_to_scale={UpdatePhase.CHECKING},
             )
             success = await self._run_apt_update(checking_callback)
@@ -121,22 +140,31 @@ class AptUpdater(BaseUpdater):
                 result.end_time = datetime.now()
                 return result
 
-            report(UpdateProgress(
-                phase=UpdatePhase.DOWNLOADING, progress=checking_end,
-                message="Downloading and installing updates...",
-            ))
+            report(
+                UpdateProgress(
+                    phase=UpdatePhase.DOWNLOADING,
+                    progress=checking_end,
+                    message="Downloading and installing updates...",
+                )
+            )
 
             if dry_run:
                 packages = await self.check_updates()
                 result.packages = packages
                 result.success = True
-                report(UpdateProgress(
-                    phase=UpdatePhase.COMPLETE, progress=1.0,
-                    completed_packages=len(packages), total_packages=len(packages),
-                ))
+                report(
+                    UpdateProgress(
+                        phase=UpdatePhase.COMPLETE,
+                        progress=1.0,
+                        completed_packages=len(packages),
+                        total_packages=len(packages),
+                    )
+                )
             else:
                 upgrade_callback = create_scaled_callback(
-                    report, scale_start=checking_end, scale_end=0.5,
+                    report,
+                    scale_start=checking_end,
+                    scale_end=0.5,
                     phases_to_scale={UpdatePhase.DOWNLOADING},
                 )
                 packages, success, error = await self._run_apt_upgrade(upgrade_callback)
@@ -144,10 +172,14 @@ class AptUpdater(BaseUpdater):
                 result.success = success
                 result.error_message = error
                 if success:
-                    report(UpdateProgress(
-                        phase=UpdatePhase.COMPLETE, progress=1.0,
-                        completed_packages=len(packages), total_packages=len(packages),
-                    ))
+                    report(
+                        UpdateProgress(
+                            phase=UpdatePhase.COMPLETE,
+                            progress=1.0,
+                            completed_packages=len(packages),
+                            total_packages=len(packages),
+                        )
+                    )
                 else:
                     report(UpdateProgress(phase=UpdatePhase.ERROR, message=error))
         except Exception as e:
@@ -166,7 +198,9 @@ class AptUpdater(BaseUpdater):
         return result
 
     async def _run_parallel_update(
-        self, callback: ProgressCallback | None = None, dry_run: bool = False,
+        self,
+        callback: ProgressCallback | None = None,
+        dry_run: bool = False,
     ) -> UpdateResult:
         """Run the APT update process using parallel downloads via aria2c."""
         self._logger = UpdateLogger("apt")
@@ -175,7 +209,9 @@ class AptUpdater(BaseUpdater):
                 run_apt_update=self._run_apt_update,
                 run_apt_install_from_cache=self._run_apt_install_from_cache,
                 run_sequential_update=self._run_sequential_update,
-                callback=callback, dry_run=dry_run, logger=self._logger,
+                callback=callback,
+                dry_run=dry_run,
+                logger=self._logger,
             )
         finally:
             if self._process:
@@ -187,15 +223,22 @@ class AptUpdater(BaseUpdater):
                 self._logger.close()
 
     async def _run_apt_install_from_cache(
-        self, report: ProgressCallback, total_packages: int,
+        self,
+        report: ProgressCallback,
+        total_packages: int,
     ) -> tuple[bool, str]:
         """Install packages from the APT cache using apt-get --no-download."""
         try:
             env = os.environ.copy()
             env["DEBIAN_FRONTEND"] = "noninteractive"
             self._process = await asyncio.create_subprocess_exec(
-                "sudo", "apt-get", "-y", "--no-download", "dist-upgrade",
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+                "sudo",
+                "apt-get",
+                "-y",
+                "--no-download",
+                "dist-upgrade",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
                 env=env,
             )
             if not self._process.stdout:
@@ -214,11 +257,15 @@ class AptUpdater(BaseUpdater):
                     match = re.search(r"Setting up\s+(\S+)", decoded)
                     pkg_name = match.group(1).split(":")[0] if match else ""
                     progress = completed / total_packages if total_packages > 0 else 0.0
-                    report(UpdateProgress(
-                        phase=UpdatePhase.INSTALLING, progress=progress,
-                        completed_packages=completed, total_packages=total_packages,
-                        current_package=pkg_name,
-                    ))
+                    report(
+                        UpdateProgress(
+                            phase=UpdatePhase.INSTALLING,
+                            progress=progress,
+                            completed_packages=completed,
+                            total_packages=total_packages,
+                            current_package=pkg_name,
+                        )
+                    )
 
             await self._process.wait()
             if self._process.returncode != 0:
@@ -233,8 +280,11 @@ class AptUpdater(BaseUpdater):
         """Run apt update command with progress tracking."""
         try:
             self._process = await asyncio.create_subprocess_exec(
-                "sudo", "apt", "update",
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+                "sudo",
+                "apt",
+                "update",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
             )
             if not self._process.stdout:
                 return False
@@ -258,12 +308,17 @@ class AptUpdater(BaseUpdater):
                         msg = "Checking for upgrades"
                     else:
                         msg = "Refreshing package lists"
-                    report(UpdateProgress(
-                        phase=UpdatePhase.CHECKING, progress=progress, message=msg,
-                    ))
+                    report(
+                        UpdateProgress(
+                            phase=UpdatePhase.CHECKING,
+                            progress=progress,
+                            message=msg,
+                        )
+                    )
                 elif "Hit:" in decoded or "Get:" in decoded:
                     msg = (
-                        "Syncing package sources" if "Hit:" in decoded
+                        "Syncing package sources"
+                        if "Hit:" in decoded
                         else "Fetching package lists"
                     )
                     report(UpdateProgress(phase=UpdatePhase.CHECKING, message=msg))
@@ -276,7 +331,8 @@ class AptUpdater(BaseUpdater):
             return False
 
     async def _run_apt_upgrade(
-        self, report: ProgressCallback,
+        self,
+        report: ProgressCallback,
     ) -> tuple[list[Package], bool, str]:
         """Run apt full-upgrade command with progress reporting."""
         packages: list[Package] = []
@@ -287,8 +343,12 @@ class AptUpdater(BaseUpdater):
             env = os.environ.copy()
             env["DEBIAN_FRONTEND"] = "noninteractive"
             self._process = await asyncio.create_subprocess_exec(
-                "sudo", "apt-get", "full-upgrade", "-y",
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+                "sudo",
+                "apt-get",
+                "full-upgrade",
+                "-y",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
                 env=env,
             )
             if not self._process.stdout:
@@ -314,14 +374,18 @@ class AptUpdater(BaseUpdater):
                     phase = phase_map.get(
                         progress_info.get("phase", ""), UpdatePhase.DOWNLOADING
                     )
-                    report(UpdateProgress(
-                        phase=phase,
-                        progress=progress_info.get("progress", 0.0),
-                        total_packages=progress_info.get("total_packages", 0),
-                        completed_packages=progress_info.get("completed_packages", 0),
-                        current_package=progress_info.get("current_package", ""),
-                        message=progress_info.get("message", ""),
-                    ))
+                    report(
+                        UpdateProgress(
+                            phase=phase,
+                            progress=progress_info.get("progress", 0.0),
+                            total_packages=progress_info.get("total_packages", 0),
+                            completed_packages=progress_info.get(
+                                "completed_packages", 0
+                            ),
+                            current_package=progress_info.get("current_package", ""),
+                            message=progress_info.get("message", ""),
+                        )
+                    )
                     if tracker.is_up_to_date:
                         await self._process.wait()
                         return [], True, ""

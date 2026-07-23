@@ -3,29 +3,31 @@
 import asyncio
 import re
 
+from ..utils import command_available
 from .base import (
     BaseUpdater,
     Package,
     PackageStatus,
-    UpdateProgress,
-    UpdatePhase,
     ProgressCallback,
+    UpdatePhase,
+    UpdateProgress,
     read_process_lines,
 )
-from ..utils import command_available
 
 # Skip patterns for filtering system/core snaps that shouldn't be shown
-SNAP_SKIP_PATTERNS = frozenset([
-    "snapd",
-    "core",
-    "core18",
-    "core20",
-    "core22",
-    "core24",
-    "bare",
-    "gnome-",
-    "gtk-common-themes",
-])
+SNAP_SKIP_PATTERNS = frozenset(
+    [
+        "snapd",
+        "core",
+        "core18",
+        "core20",
+        "core22",
+        "core24",
+        "bare",
+        "gnome-",
+        "gtk-common-themes",
+    ]
+)
 
 
 class SnapUpdater(BaseUpdater):
