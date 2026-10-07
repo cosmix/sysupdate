@@ -1,5 +1,6 @@
 """Tests for the CLI tool updaters (Claude Code, Codex CLI)."""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -25,7 +26,27 @@ def _update_proc(chunks: list[bytes], returncode: int = 0) -> AsyncMock:
 
 @pytest.fixture
 def updater() -> CliToolUpdater:
-    return CliToolUpdater("claude", "Claude Code")
+    with patch("os.geteuid", return_value=1000):
+        return CliToolUpdater("claude", "Claude Code")
+
+
+_PW = SimpleNamespace(
+    pw_name="alice",
+    pw_uid=1000,
+    pw_gid=1001,
+    pw_dir="/home/alice",
+    pw_shell="/bin/zsh",
+)
+
+
+def _root_updater() -> CliToolUpdater:
+    with (
+        patch("os.geteuid", return_value=0),
+        patch.dict("os.environ", {"SUDO_USER": "alice", "PATH": "/usr/bin"}),
+        patch("pwd.getpwnam", return_value=_PW),
+        patch("os.getgrouplist", return_value=[1001, 27]),
+    ):
+        return CliToolUpdater("claude", "Claude Code")
 
 
 class TestCliToolUpdater:
@@ -35,16 +56,51 @@ class TestCliToolUpdater:
 
     @pytest.mark.asyncio
     async def test_available(self, updater):
-        with patch("asyncio.create_subprocess_exec") as mock_exec:
-            mock_exec.return_value = AsyncMock(wait=AsyncMock(return_value=0))
-            mock_exec.return_value.returncode = 0
+        with patch("shutil.which", return_value="/usr/bin/claude") as which:
             assert await updater.check_available() is True
+        assert which.call_args.args == ("claude",)
+        assert updater._executable == "/usr/bin/claude"
 
     @pytest.mark.asyncio
     async def test_unavailable(self, updater):
-        with patch("asyncio.create_subprocess_exec") as mock_exec:
-            mock_exec.side_effect = FileNotFoundError
+        with patch("shutil.which", return_value=None):
             assert await updater.check_available() is False
+
+    @pytest.mark.asyncio
+    async def test_non_root_passes_no_user_kwargs(self, updater):
+        procs = [_version_proc("1.0.0\n")]
+        with patch("asyncio.create_subprocess_exec", side_effect=procs) as mock_exec:
+            await updater._get_version()
+        kwargs = mock_exec.call_args.kwargs
+        for key in ("user", "group", "extra_groups", "cwd", "env"):
+            assert key not in kwargs
+
+    @pytest.mark.asyncio
+    async def test_sudo_user_runs_as_that_user(self):
+        updater = _root_updater()
+        procs = [
+            _version_proc("1.0.0\n"),
+            _update_proc([b""]),
+            _version_proc("1.0.0\n"),
+        ]
+        with (
+            patch("shutil.which", return_value="/home/alice/.local/bin/claude") as which,
+            patch("asyncio.create_subprocess_exec", side_effect=procs) as mock_exec,
+        ):
+            assert await updater.check_available() is True
+            await updater._do_upgrade(lambda _: None)
+        assert which.call_args.kwargs["path"].startswith("/home/alice/.local/bin:")
+        assert mock_exec.call_count == 3
+        for call in mock_exec.call_args_list:
+            assert call.args[0] == "/home/alice/.local/bin/claude"
+            kwargs = call.kwargs
+            assert kwargs["user"] == 1000
+            assert kwargs["group"] == 1001
+            assert kwargs["extra_groups"] == [1001, 27]
+            assert kwargs["cwd"] == "/home/alice"
+            assert kwargs["env"]["HOME"] == "/home/alice"
+            assert kwargs["env"]["USER"] == "alice"
+            assert kwargs["env"]["PATH"].startswith("/home/alice/.local/bin:")
 
     @pytest.mark.asyncio
     async def test_dry_run_reports_nothing(self, updater):
