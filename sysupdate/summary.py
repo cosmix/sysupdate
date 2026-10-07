@@ -24,6 +24,8 @@ MANAGER_ACCENTS = {
     "Snap": "#8b5cf6",
     "DNF": "#d946ef",
     "Pacman": "#f472b6",
+    "Claude": "#f97316",
+    "Codex": "#10b981",
 }
 
 # Width of summary section rules and of the per-manager count bars
@@ -51,6 +53,8 @@ TABLE_CONFIG = {
         "name_col": "Package",
         "show_versions": True,
     },
+    "Claude": {"title": "Claude Code", "name_col": "Tool", "show_versions": True},
+    "Codex": {"title": "Codex CLI", "name_col": "Tool", "show_versions": True},
 }
 
 

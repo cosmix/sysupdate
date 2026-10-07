@@ -35,6 +35,7 @@ from .updaters.base import (
     UpdateResult,
     UpdaterProtocol,
 )
+from .updaters.cli_tools import CliToolUpdater
 from .updaters.dnf import DnfUpdater
 from .updaters.flatpak import FlatpakUpdater
 from .updaters.pacman import PacmanUpdater
@@ -74,6 +75,12 @@ class SysUpdateCLI:
             UpdaterConfig(SnapUpdater(), "Snap", max_pkg_len=12),
             UpdaterConfig(DnfUpdater(), "DNF", max_pkg_len=12),
             UpdaterConfig(PacmanUpdater(), "Pacman", max_pkg_len=12),
+            UpdaterConfig(
+                CliToolUpdater("claude", "Claude Code"), "Claude", max_pkg_len=12
+            ),
+            UpdaterConfig(
+                CliToolUpdater("codex", "Codex CLI"), "Codex", max_pkg_len=12
+            ),
         ]
 
     def _supports_unicode(self) -> bool:

@@ -21,7 +21,7 @@ class TestSysUpdateCLI:
             assert cli.dry_run is False
             assert isinstance(cli.console, Console)
             assert cli._updaters is not None
-            assert len(cli._updaters) == 5  # APT, Flatpak, Snap, DNF, Pacman
+            assert len(cli._updaters) == 7  # APT, Flatpak, Snap, DNF, Pacman, Claude, Codex
 
     def test_instantiation_with_options(self):
         """Test CLI with verbose and dry_run options."""

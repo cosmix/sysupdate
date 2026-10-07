@@ -78,7 +78,15 @@ class TestManagerAccents:
     """Every configured updater label has an accent color."""
 
     def test_all_managers_have_accents(self):
-        assert set(MANAGER_ACCENTS) == {"APT", "Flatpak", "Snap", "DNF", "Pacman"}
+        assert set(MANAGER_ACCENTS) == {
+            "APT",
+            "Flatpak",
+            "Snap",
+            "DNF",
+            "Pacman",
+            "Claude",
+            "Codex",
+        }
 
     def test_accents_are_hex_colors(self):
         for accent in MANAGER_ACCENTS.values():
