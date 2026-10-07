@@ -15,6 +15,8 @@ A fast, beautiful CLI for managing system updates on Linux. Runs package manager
 | Flatpak         | All distributions                    |
 | Snap            | All distributions                    |
 
+Also updates these CLI tools when installed: Claude Code (`claude update`) and Codex CLI (`codex update`). Under `sudo` they run as the invoking user, so per-user installs in `~/.local/bin` are found and stay owned by that user. A dry run lists nothing for them, since neither has a check-only mode.
+
 ## Features
 
 - **Concurrent Updates**: All available package managers run in parallel
@@ -113,6 +115,7 @@ Narrow or non-Unicode terminals automatically fall back to compact ASCII art._
 - At least one supported package manager (APT, DNF, or Pacman)
 - `flatpak` (optional)
 - `snap` (optional)
+- `claude` / `codex` (optional, updated via their own `update` command)
 - `aria2` (optional, for parallel APT downloads)
 
 ## Log Files
@@ -126,6 +129,8 @@ sysupdate_YYYYMMDD_HHMMSS_dnf.log      # Fedora/RHEL
 sysupdate_YYYYMMDD_HHMMSS_pacman.log   # Arch
 sysupdate_YYYYMMDD_HHMMSS_flatpak.log
 sysupdate_YYYYMMDD_HHMMSS_snap.log
+sysupdate_YYYYMMDD_HHMMSS_claude.log
+sysupdate_YYYYMMDD_HHMMSS_codex.log
 ```
 
 ## Testing
