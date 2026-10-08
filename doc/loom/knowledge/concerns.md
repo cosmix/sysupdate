@@ -52,3 +52,7 @@ run_update scaffolding, buffer reading, version fetching.
 ## RESOLVED: Subprocess Cleanup Gap (fixed by updater-refactor)
 
 - BaseUpdater.run_update() has try/finally with self.\_process.kill()
+
+## PyApp binary CPU level
+
+The x86_64 release binary pins PyApp's baseline (v1) Python build; PyApp's default v3 build exits silently on CPUs without AVX2. See [concerns/pyapp-cpu-variant](concerns/pyapp-cpu-variant.md).
