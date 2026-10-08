@@ -111,6 +111,9 @@ jobs:
           PYAPP_PROJECT_VERSION: ${{ needs.build-wheel.outputs.version }}
           PYAPP_PROJECT_PATH: ${{ github.workspace }}/wheel/${{ needs.build-wheel.outputs.wheel_name }}
           PYAPP_DISTRIBUTION_EMBED: ${{ inputs.embed_python && '1' || '0' }}
+          # PyApp defaults to the x86-64-v3 Python build, which dies with SIGILL
+          # on CPUs without AVX2 (including Proxmox's default kvm64/x86-64-v2 VMs).
+          PYAPP_DISTRIBUTION_VARIANT: v1
         run: |
           cd pyapp
           cargo build --release

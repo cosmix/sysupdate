@@ -40,6 +40,12 @@ fi
 echo "Building binary (embed_python=$EMBED_PYTHON)..."
 cd "$PYAPP_DIR"
 
+# PyApp defaults to the x86-64-v3 Python build, which dies with SIGILL on CPUs
+# without AVX2. Other architectures have no variants, so leave it unset there.
+if [[ "$(uname -m)" == "x86_64" ]]; then
+    export PYAPP_DISTRIBUTION_VARIANT="v1"
+fi
+
 PYAPP_PROJECT_NAME=sysupdate \
 PYAPP_PROJECT_PATH="$(realpath "../$WHEEL_PATH")" \
 PYAPP_EXEC_SPEC="sysupdate.__main__:main" \
