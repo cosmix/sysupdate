@@ -14,8 +14,15 @@ A fast, beautiful CLI for managing system updates on Linux. Runs package manager
 | Pacman          | Arch Linux, Manjaro, EndeavourOS     |
 | Flatpak         | All distributions                    |
 | Snap            | All distributions                    |
+| AUR             | Arch-based, with yay or paru         |
+| mise            | All distributions                    |
+| Omarchy         | Omarchy (migrations)                 |
 
 Also updates these CLI tools when installed: Claude Code (`claude update`) and Codex CLI (`codex update`). Under `sudo` they run as the invoking user, so per-user installs in `~/.local/bin` are found and stay owned by that user. A dry run lists nothing for them, since neither has a check-only mode.
+
+AUR updates use `yay` (or `paru` when yay is missing) and run as the invoking user, since makepkg refuses to run as root; they are skipped when sysupdate runs as root without `sudo`. mise tools are upgraded with `mise upgrade`, also as the invoking user. On Omarchy, pending migrations are applied with `omarchy-migrate`, and Pacman runs with `--overwrite /usr/share/omarchy/*` as Omarchy's own updater does.
+
+Pacman runs first. Omarchy migrations start after Pacman finishes, and AUR after both, because of the pacman lock and because migrations need the new packages. If Pacman fails, the updaters that wait for it are skipped and reported as failures. Everything else runs concurrently.
 
 ## Features
 
