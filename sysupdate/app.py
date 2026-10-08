@@ -15,6 +15,7 @@ from rich.progress import (
 from . import __version__
 from .banner import WARNING_STYLE, show_banner
 from .console import console
+from .ordering import OrderGate
 from .summary import print_summary
 from .ui import (
     _MARKUP_PATTERN,
@@ -28,6 +29,7 @@ from .ui import (
 )
 from .updaters.apt import AptUpdater
 from .updaters.aria2_downloader import Aria2Downloader
+from .updaters.aur import AurUpdater
 from .updaters.base import (
     Package,
     UpdatePhase,
@@ -38,10 +40,13 @@ from .updaters.base import (
 from .updaters.cli_tools import CliToolUpdater
 from .updaters.dnf import DnfUpdater
 from .updaters.flatpak import FlatpakUpdater
+from .updaters.mise import MiseUpdater
+from .updaters.omarchy import OmarchyMigrateUpdater
 from .updaters.pacman import PacmanUpdater
 from .updaters.snap import SnapUpdater
 from .utils.aria2 import prompt_install_aria2
 from .utils.logging import get_log_dir, setup_logging
+from .utils.omarchy import OMARCHY_OVERWRITE_ARGS, is_omarchy
 
 
 @dataclass
@@ -51,6 +56,7 @@ class UpdaterConfig:
     updater: UpdaterProtocol
     label: str
     max_pkg_len: int = 12
+    after: tuple[str, ...] = ()  # labels this updater waits for
 
 
 class SysUpdateCLI:
@@ -74,7 +80,18 @@ class SysUpdateCLI:
             UpdaterConfig(FlatpakUpdater(), "Flatpak", max_pkg_len=10),
             UpdaterConfig(SnapUpdater(), "Snap", max_pkg_len=12),
             UpdaterConfig(DnfUpdater(), "DNF", max_pkg_len=12),
-            UpdaterConfig(PacmanUpdater(), "Pacman", max_pkg_len=12),
+            UpdaterConfig(
+                PacmanUpdater(OMARCHY_OVERWRITE_ARGS if is_omarchy() else ()),
+                "Pacman",
+                max_pkg_len=12,
+            ),
+            UpdaterConfig(
+                OmarchyMigrateUpdater(), "Omarchy", max_pkg_len=12, after=("Pacman",)
+            ),
+            UpdaterConfig(
+                AurUpdater(), "AUR", max_pkg_len=12, after=("Pacman", "Omarchy")
+            ),
+            UpdaterConfig(MiseUpdater(), "mise", max_pkg_len=12),
             UpdaterConfig(
                 CliToolUpdater("claude", "Claude Code"), "Claude", max_pkg_len=12
             ),
@@ -261,6 +278,7 @@ class SysUpdateCLI:
         ) as progress:
             coroutines = []
             labels = []
+            gate = OrderGate(cfg.label for cfg, avail in available_updaters if avail)
 
             for cfg, is_available in available_updaters:
                 if is_available:
@@ -270,7 +288,7 @@ class SysUpdateCLI:
                         total=None,
                         phase="checking",
                     )
-                    coroutines.append(self._run_updater(progress, task_id, cfg))
+                    coroutines.append(self._run_updater(progress, task_id, cfg, gate))
                     labels.append(cfg.label)
 
             skipped = [cfg.label for cfg, avail in available_updaters if not avail]
@@ -310,16 +328,26 @@ class SysUpdateCLI:
         progress: Progress,
         task_id: TaskID,
         cfg: UpdaterConfig,
+        gate: OrderGate,
     ) -> UpdateResult:
-        """Run an updater with progress tracking."""
+        """Run an updater with progress tracking, after its predecessors."""
         on_progress = self._create_progress_callback(
             progress, task_id, label=cfg.label, max_pkg_len=cfg.max_pkg_len
         )
 
-        result = await cfg.updater.run_update(
-            callback=on_progress,
-            dry_run=self.dry_run,
-        )
+        succeeded = False
+        try:
+            skip_reason = await gate.wait_for(cfg.after)
+            if skip_reason:
+                result = UpdateResult(success=False, error_message=skip_reason)
+            else:
+                result = await cfg.updater.run_update(
+                    callback=on_progress,
+                    dry_run=self.dry_run,
+                )
+            succeeded = result.success
+        finally:
+            gate.done(cfg.label, succeeded)
 
         # Ensure we transition to determinate mode and mark complete
         progress.update(

@@ -13,6 +13,7 @@ from sysupdate.updaters.snap import SnapUpdater
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_mock_process(
     stdout_chunks: list[bytes],
     returncode: int = 0,
@@ -57,6 +58,7 @@ def _collect_phases(updates: list[UpdateProgress]) -> list[UpdatePhase]:
 # ---------------------------------------------------------------------------
 # FlatpakUpdater tests
 # ---------------------------------------------------------------------------
+
 
 class TestFlatpakUpgrade:
     """Tests for FlatpakUpdater._do_upgrade / run_update(dry_run=False)."""
@@ -110,10 +112,7 @@ class TestFlatpakUpgrade:
 
     async def test_upgrade_no_updates(self, updater: FlatpakUpdater):
         """When Flatpak reports nothing to do, result is success with no packages."""
-        flatpak_output = (
-            "Looking for updates\u2026\n"
-            "Nothing to do.\n"
-        )
+        flatpak_output = "Looking for updates\u2026\nNothing to do.\n"
         mock_proc = _make_mock_process(
             [flatpak_output.encode(), b""],
             returncode=0,
@@ -134,8 +133,7 @@ class TestFlatpakUpgrade:
     async def test_upgrade_subprocess_failure(self, updater: FlatpakUpdater):
         """Non-zero exit code from flatpak results in error."""
         flatpak_output = (
-            "Looking for updates\u2026\n"
-            "error: Unable to update: network unavailable\n"
+            "Looking for updates\u2026\nerror: Unable to update: network unavailable\n"
         )
         mock_proc = _make_mock_process(
             [flatpak_output.encode(), b""],
@@ -159,6 +157,7 @@ class TestFlatpakUpgrade:
 # ---------------------------------------------------------------------------
 # SnapUpdater tests
 # ---------------------------------------------------------------------------
+
 
 class TestSnapUpgrade:
     """Tests for SnapUpdater._do_upgrade / run_update(dry_run=False)."""
@@ -202,8 +201,8 @@ class TestSnapUpgrade:
 
         with patch("asyncio.create_subprocess_exec") as mock_exec:
             mock_exec.side_effect = [
-                mock_check_proc,    # check_updates() inside _do_upgrade
-                mock_list_proc,     # _get_current_versions()
+                mock_check_proc,  # check_updates() inside _do_upgrade
+                mock_list_proc,  # _get_current_versions()
                 mock_refresh_proc,  # snap refresh
             ]
             with patch.object(updater, "_logger", MagicMock()):
@@ -263,7 +262,7 @@ class TestSnapUpgrade:
         mock_list_proc = _make_communicate_process(list_output, returncode=0)
 
         # snap refresh fails
-        refresh_output = b"error: cannot refresh \"firefox\": snap is running\n"
+        refresh_output = b'error: cannot refresh "firefox": snap is running\n'
         mock_refresh_proc = _make_mock_process(
             [refresh_output, b""],
             returncode=1,
@@ -292,6 +291,7 @@ class TestSnapUpgrade:
 # PacmanUpdater tests
 # ---------------------------------------------------------------------------
 
+
 class TestPacmanUpgrade:
     """Tests for PacmanUpdater._do_upgrade / run_update(dry_run=False)."""
 
@@ -302,10 +302,7 @@ class TestPacmanUpgrade:
     async def test_upgrade_with_updates(self, updater: PacmanUpdater):
         """Successful pacman -Syu with two packages produces correct result."""
         # check_updates: checkupdates
-        checkupdates_output = (
-            b"linux 6.1.0-1 -> 6.1.1-1\n"
-            b"mesa 23.0-1 -> 23.1-1\n"
-        )
+        checkupdates_output = b"linux 6.1.0-1 -> 6.1.1-1\nmesa 23.0-1 -> 23.1-1\n"
         mock_check_proc = _make_communicate_process(checkupdates_output, returncode=0)
 
         # pacman -Syu streaming output
@@ -340,7 +337,7 @@ class TestPacmanUpgrade:
             with patch("asyncio.create_subprocess_exec") as mock_exec:
                 mock_exec.side_effect = [
                     mock_check_proc,  # check_updates (checkupdates)
-                    mock_syu_proc,    # sudo pacman -Syu
+                    mock_syu_proc,  # sudo pacman -Syu
                 ]
                 with patch.object(updater, "_logger", MagicMock()):
                     result = await updater.run_update(callback=track, dry_run=False)
@@ -361,6 +358,25 @@ class TestPacmanUpgrade:
         assert UpdatePhase.DOWNLOADING in phases
         assert UpdatePhase.INSTALLING in phases
         assert UpdatePhase.COMPLETE in phases
+
+    async def test_extra_args_appended_to_syu(self):
+        """Injected extra args follow the fixed -Syu arguments."""
+        updater = PacmanUpdater(("--overwrite", "/usr/share/omarchy/*"))
+        mock_check_proc = _make_communicate_process(b"linux 1-1 -> 2-1\n", returncode=0)
+        mock_syu_proc = _make_mock_process(
+            [b"(1/1) upgrading linux\n", b""], returncode=0
+        )
+        with (
+            patch("sysupdate.updaters.pacman.command_available", return_value=True),
+            patch(
+                "asyncio.create_subprocess_exec",
+                side_effect=[mock_check_proc, mock_syu_proc],
+            ) as mock_exec,
+        ):
+            await updater._do_upgrade(lambda _: None)
+        argv = mock_exec.call_args_list[1].args
+        assert argv[:3] == ("sudo", "pacman", "-Syu")
+        assert argv[-2:] == ("--overwrite", "/usr/share/omarchy/*")
 
     async def test_upgrade_no_updates(self, updater: PacmanUpdater):
         """When check_updates returns nothing, pacman -Syu is not called."""
@@ -414,5 +430,8 @@ class TestPacmanUpgrade:
                     result = await updater.run_update(callback=track, dry_run=False)
 
         assert result.success is False
-        assert "error" in result.error_message.lower() or "failed" in result.error_message.lower()
+        assert (
+            "error" in result.error_message.lower()
+            or "failed" in result.error_message.lower()
+        )
         assert any(p.phase == UpdatePhase.ERROR for p in progress_updates)

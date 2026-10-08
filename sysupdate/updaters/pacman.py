@@ -2,6 +2,7 @@
 
 import asyncio
 import re
+from collections.abc import Sequence
 
 from ..utils import command_available
 from .base import (
@@ -17,6 +18,10 @@ from .base import (
 
 class PacmanUpdater(BaseUpdater):
     """Updater for Pacman packages (Arch Linux, Manjaro, EndeavourOS, etc.)."""
+
+    def __init__(self, extra_args: Sequence[str] = ()) -> None:
+        super().__init__()
+        self._extra_args = tuple(extra_args)
 
     @property
     def name(self) -> str:
@@ -180,6 +185,7 @@ class PacmanUpdater(BaseUpdater):
                 "--noconfirm",
                 "--color",
                 "never",
+                *self._extra_args,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
             )

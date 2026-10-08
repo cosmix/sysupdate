@@ -84,6 +84,9 @@ class TestManagerAccents:
             "Snap",
             "DNF",
             "Pacman",
+            "AUR",
+            "Omarchy",
+            "mise",
             "Claude",
             "Codex",
         }

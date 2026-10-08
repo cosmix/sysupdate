@@ -24,6 +24,9 @@ MANAGER_ACCENTS = {
     "Snap": "#8b5cf6",
     "DNF": "#d946ef",
     "Pacman": "#f472b6",
+    "AUR": "#1793d1",
+    "Omarchy": "#a3e635",
+    "mise": "#eab308",
     "Claude": "#f97316",
     "Codex": "#10b981",
 }
@@ -53,6 +56,13 @@ TABLE_CONFIG = {
         "name_col": "Package",
         "show_versions": True,
     },
+    "AUR": {"title": "AUR Packages", "name_col": "Package", "show_versions": True},
+    "Omarchy": {
+        "title": "Omarchy Migrations",
+        "name_col": "Migration",
+        "show_versions": False,
+    },
+    "mise": {"title": "mise Tools", "name_col": "Tool", "show_versions": True},
     "Claude": {"title": "Claude Code", "name_col": "Tool", "show_versions": True},
     "Codex": {"title": "Codex CLI", "name_col": "Tool", "show_versions": True},
 }
