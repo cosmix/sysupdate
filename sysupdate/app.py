@@ -243,12 +243,6 @@ class SysUpdateCLI:
         """Run all available package manager updates concurrently."""
         start_time = time.monotonic()
 
-        # Check for aria2c availability (for parallel APT downloads)
-        downloader = Aria2Downloader()
-        aria2_available = await downloader.check_available()
-        if not aria2_available:
-            await prompt_install_aria2(self.console)
-
         # Check which updaters are available
         availability = await asyncio.gather(
             *[cfg.updater.check_available() for cfg in self._updaters]
@@ -256,6 +250,13 @@ class SysUpdateCLI:
         available_updaters = [
             (cfg, avail) for cfg, avail in zip(self._updaters, availability)
         ]
+
+        # aria2c only accelerates APT downloads, so offer it only when APT runs
+        apt_available = any(
+            avail for cfg, avail in available_updaters if cfg.label == "APT"
+        )
+        if apt_available and not await Aria2Downloader().check_available():
+            await prompt_install_aria2(self.console)
 
         # Collect results by label, and failures as (label, message) pairs
         results_by_label: dict[str, list[Package]] = {

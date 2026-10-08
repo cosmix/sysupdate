@@ -2,6 +2,7 @@
 
 import asyncio
 import shutil
+import sys
 
 from rich.console import Console
 from rich.markup import escape
@@ -77,16 +78,21 @@ async def prompt_install_aria2(console: Console) -> bool:
     console.print(gradient_rule(48, use_ascii, indent=2))
     console.print()
 
-    # Prompt user
-    loop = asyncio.get_running_loop()
-    install = await loop.run_in_executor(
-        None,
-        lambda: Confirm.ask(
-            f"  [bold {DEFAULT_ACCENT}]Install aria2 now?[/] [dim](takes a few seconds)[/]",
-            console=console,
-            default=True,
-        ),
-    )
+    # Without a TTY there is nobody to answer: skip the prompt
+    install = False
+    if sys.stdin and sys.stdin.isatty():
+        loop = asyncio.get_running_loop()
+        try:
+            install = await loop.run_in_executor(
+                None,
+                lambda: Confirm.ask(
+                    f"  [bold {DEFAULT_ACCENT}]Install aria2 now?[/] [dim](takes a few seconds)[/]",
+                    console=console,
+                    default=True,
+                ),
+            )
+        except EOFError:
+            install = False
 
     if not install:
         console.print()

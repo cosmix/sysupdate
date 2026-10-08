@@ -2,6 +2,8 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from sysupdate.utils.aria2 import (
     _detect_install_command,
     _install_aria2,
@@ -88,8 +90,46 @@ class TestInstallHint:
         assert hint == "your package manager"
 
 
+@pytest.fixture
+def tty_stdin():
+    """Make sys.stdin report as an interactive terminal."""
+    with patch("sysupdate.utils.aria2.sys.stdin") as stdin:
+        stdin.isatty.return_value = True
+        yield stdin
+
+
+@pytest.mark.usefixtures("tty_stdin")
 class TestPromptInstallAria2:
     """Tests for prompt_install_aria2."""
+
+    async def test_non_tty_stdin_skips_prompt(self):
+        """Test that no prompt is shown when stdin is not interactive."""
+        console = MagicMock()
+
+        with (
+            patch("sysupdate.utils.aria2.sys.stdin") as stdin,
+            patch("sysupdate.utils.aria2.Confirm.ask") as mock_ask,
+        ):
+            stdin.isatty.return_value = False
+            result = await prompt_install_aria2(console)
+
+        assert result is False
+        mock_ask.assert_not_called()
+
+    async def test_eof_on_prompt_is_treated_as_no(self):
+        """Test that EOFError from the prompt declines the installation."""
+        console = MagicMock()
+
+        with (
+            patch("sysupdate.utils.aria2.Confirm.ask", side_effect=EOFError),
+            patch(
+                "sysupdate.utils.aria2._install_aria2", new_callable=AsyncMock
+            ) as mock_install,
+        ):
+            result = await prompt_install_aria2(console)
+
+        assert result is False
+        mock_install.assert_not_awaited()
 
     async def test_user_declines_installation(self):
         """Test that declining the prompt returns False without attempting install."""
