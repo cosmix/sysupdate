@@ -24,7 +24,7 @@ fi
 echo "Building wheel..."
 uv build --wheel
 
-WHEEL_PATH=$(ls dist/*.whl | head -1)
+WHEEL_PATH=$(ls -t dist/*.whl | head -1)
 echo "Built: $WHEEL_PATH"
 
 # Download PyApp if needed
