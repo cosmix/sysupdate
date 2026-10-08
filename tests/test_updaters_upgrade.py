@@ -333,7 +333,7 @@ class TestPacmanUpgrade:
         def track(p: UpdateProgress) -> None:
             progress_updates.append(p)
 
-        with patch("sysupdate.updaters.pacman.command_available", return_value=True):
+        with patch("sysupdate.updaters.pacman.command_on_path", return_value=True):
             with patch("asyncio.create_subprocess_exec") as mock_exec:
                 mock_exec.side_effect = [
                     mock_check_proc,  # check_updates (checkupdates)
@@ -367,7 +367,7 @@ class TestPacmanUpgrade:
             [b"(1/1) upgrading linux\n", b""], returncode=0
         )
         with (
-            patch("sysupdate.updaters.pacman.command_available", return_value=True),
+            patch("sysupdate.updaters.pacman.command_on_path", return_value=True),
             patch(
                 "asyncio.create_subprocess_exec",
                 side_effect=[mock_check_proc, mock_syu_proc],
@@ -388,7 +388,7 @@ class TestPacmanUpgrade:
         def track(p: UpdateProgress) -> None:
             progress_updates.append(p)
 
-        with patch("sysupdate.updaters.pacman.command_available", return_value=True):
+        with patch("sysupdate.updaters.pacman.command_on_path", return_value=True):
             with patch("asyncio.create_subprocess_exec") as mock_exec:
                 mock_exec.side_effect = [mock_check_proc]
                 with patch.object(updater, "_logger", MagicMock()):
@@ -420,7 +420,7 @@ class TestPacmanUpgrade:
         def track(p: UpdateProgress) -> None:
             progress_updates.append(p)
 
-        with patch("sysupdate.updaters.pacman.command_available", return_value=True):
+        with patch("sysupdate.updaters.pacman.command_on_path", return_value=True):
             with patch("asyncio.create_subprocess_exec") as mock_exec:
                 mock_exec.side_effect = [
                     mock_check_proc,

@@ -19,12 +19,7 @@ class TestDnfUpdater:
 
     async def test_check_available_dnf5_preferred(self, updater):
         """Test that dnf5 is preferred when both dnf and dnf5 exist."""
-        with patch("asyncio.create_subprocess_exec") as mock_exec:
-            mock_proc = AsyncMock()
-            mock_proc.returncode = 0
-            mock_proc.wait = AsyncMock()
-            mock_exec.return_value = mock_proc
-
+        with patch("sysupdate.updaters.dnf.command_on_path", return_value=True):
             result = await updater.check_available()
 
             assert result is True
@@ -33,17 +28,7 @@ class TestDnfUpdater:
 
     async def test_check_available_dnf4_fallback(self, updater):
         """Test fallback to dnf when dnf5 doesn't exist."""
-        with patch("asyncio.create_subprocess_exec") as mock_exec:
-            mock_dnf5_proc = AsyncMock()
-            mock_dnf5_proc.returncode = 1
-            mock_dnf5_proc.wait = AsyncMock()
-
-            mock_dnf_proc = AsyncMock()
-            mock_dnf_proc.returncode = 0
-            mock_dnf_proc.wait = AsyncMock()
-
-            mock_exec.side_effect = [mock_dnf5_proc, mock_dnf_proc]
-
+        with patch("sysupdate.updaters.dnf.command_on_path", side_effect=lambda cmd: cmd == "dnf"):
             result = await updater.check_available()
 
             assert result is True

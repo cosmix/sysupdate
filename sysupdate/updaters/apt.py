@@ -5,7 +5,7 @@ import os
 import re
 from datetime import datetime
 
-from ..utils import command_available
+from ..utils import command_available, command_on_path
 from ..utils.logging import UpdateLogger
 from ..utils.parsing import parse_apt_output
 from .apt_cache import is_apt_available
@@ -39,7 +39,7 @@ class AptUpdater(BaseUpdater):
 
     async def check_available(self) -> bool:
         """Check if APT is available."""
-        return await command_available("which", "apt")
+        return command_on_path("apt")
 
     async def check_updates(self) -> list[Package]:
         """Check for available updates without installing."""

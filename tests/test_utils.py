@@ -1,6 +1,8 @@
 """Tests for utility functions."""
 
-from sysupdate.utils import command_available
+from unittest.mock import patch
+
+from sysupdate.utils import command_available, command_on_path
 
 
 class TestCommandAvailable:
@@ -93,3 +95,16 @@ class TestCommandAvailable:
         result2 = await command_available("nonexistent_command_99999")
         assert result2 is False
         assert result1 == result2
+
+
+class TestCommandOnPath:
+    """Tests for command_on_path function."""
+
+    def test_found(self):
+        with patch("sysupdate.utils.shutil.which", return_value="/usr/bin/pacman") as w:
+            assert command_on_path("pacman") is True
+        w.assert_called_once_with("pacman")
+
+    def test_missing(self):
+        with patch("sysupdate.utils.shutil.which", return_value=None):
+            assert command_on_path("pacman") is False

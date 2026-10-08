@@ -94,21 +94,14 @@ class TestAptUpdater:
 
     async def test_check_available_false(self, updater):
         """Test check_available when apt doesn't exist."""
-        with patch("asyncio.create_subprocess_exec") as mock_exec:
-            mock_proc = AsyncMock()
-            mock_proc.returncode = 1
-            mock_proc.wait = AsyncMock()
-            mock_exec.return_value = mock_proc
-
+        with patch("sysupdate.updaters.apt.command_on_path", return_value=False):
             result = await updater.check_available()
             assert result is False
 
 
     async def test_check_available_exception(self, updater):
         """Test check_available handles exceptions."""
-        with patch("asyncio.create_subprocess_exec") as mock_exec:
-            mock_exec.side_effect = Exception("Command not found")
-
+        with patch("sysupdate.updaters.apt.command_on_path", return_value=False):
             result = await updater.check_available()
             assert result is False
 
@@ -195,12 +188,7 @@ class TestFlatpakUpdater:
 
     async def test_check_available_false(self, updater):
         """Test check_available when flatpak doesn't exist."""
-        with patch("asyncio.create_subprocess_exec") as mock_exec:
-            mock_proc = AsyncMock()
-            mock_proc.returncode = 1
-            mock_proc.wait = AsyncMock()
-            mock_exec.return_value = mock_proc
-
+        with patch("sysupdate.updaters.flatpak.command_on_path", return_value=False):
             result = await updater.check_available()
             assert result is False
 
@@ -274,12 +262,7 @@ class TestSnapUpdater:
 
     async def test_check_available_true(self, updater):
         """Test check_available when snap exists."""
-        with patch("asyncio.create_subprocess_exec") as mock_exec:
-            mock_proc = AsyncMock()
-            mock_proc.returncode = 0
-            mock_proc.wait = AsyncMock()
-            mock_exec.return_value = mock_proc
-
+        with patch("sysupdate.updaters.snap.command_on_path", return_value=True):
             result = await updater.check_available()
             assert result is True
 
@@ -388,12 +371,7 @@ class TestPacmanUpdater:
 
     async def test_check_available_true(self, updater):
         """Test check_available when pacman exists."""
-        with patch("asyncio.create_subprocess_exec") as mock_exec:
-            mock_proc = AsyncMock()
-            mock_proc.returncode = 0
-            mock_proc.wait = AsyncMock()
-            mock_exec.return_value = mock_proc
-
+        with patch("sysupdate.updaters.pacman.command_on_path", return_value=True):
             result = await updater.check_available()
             assert result is True
 
@@ -416,7 +394,7 @@ class TestPacmanUpdater:
 firefox 122.0-1 -> 122.0.1-1
 python 3.11.7-1 -> 3.11.8-1
 """
-        with patch("sysupdate.updaters.pacman.command_available") as mock_avail:
+        with patch("sysupdate.updaters.pacman.command_on_path") as mock_avail:
             mock_avail.return_value = True  # checkupdates is available
 
             with patch("asyncio.create_subprocess_exec") as mock_exec:
@@ -438,7 +416,7 @@ python 3.11.7-1 -> 3.11.8-1
         pacman_output = b"""linux 6.7.1-1
 firefox 122.0.1-1
 """
-        with patch("sysupdate.updaters.pacman.command_available") as mock_avail:
+        with patch("sysupdate.updaters.pacman.command_on_path") as mock_avail:
             mock_avail.return_value = False  # checkupdates not available
 
             with patch("asyncio.create_subprocess_exec") as mock_exec:
@@ -455,7 +433,7 @@ firefox 122.0.1-1
 
     async def test_check_updates_empty(self, updater):
         """Test handling when no updates are available."""
-        with patch("sysupdate.updaters.pacman.command_available") as mock_avail:
+        with patch("sysupdate.updaters.pacman.command_on_path") as mock_avail:
             mock_avail.return_value = True
 
             with patch("asyncio.create_subprocess_exec") as mock_exec:
@@ -477,7 +455,7 @@ firefox 122.0.1-1
         def track_progress(progress: UpdateProgress):
             progress_updates.append(progress)
 
-        with patch("sysupdate.updaters.pacman.command_available") as mock_avail:
+        with patch("sysupdate.updaters.pacman.command_on_path") as mock_avail:
             mock_avail.return_value = True
 
             with patch("asyncio.create_subprocess_exec") as mock_exec:

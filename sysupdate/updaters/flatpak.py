@@ -4,7 +4,7 @@ import asyncio
 import os
 import re
 
-from ..utils import command_available
+from ..utils import command_on_path
 from ..utils.parsing import clean_flatpak_ref, parse_flatpak_output
 from .base import (
     BaseUpdater,
@@ -35,7 +35,7 @@ class FlatpakUpdater(BaseUpdater):
 
     async def check_available(self) -> bool:
         """Check if Flatpak is available."""
-        return await command_available("which", "flatpak")
+        return command_on_path("flatpak")
 
     async def check_updates(self) -> list[Package]:
         """Check for available Flatpak updates."""

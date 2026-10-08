@@ -3,7 +3,7 @@
 import asyncio
 import re
 
-from ..utils import command_available
+from ..utils import command_on_path
 from .base import (
     BaseUpdater,
     Package,
@@ -39,7 +39,7 @@ class SnapUpdater(BaseUpdater):
 
     async def check_available(self) -> bool:
         """Check if Snap is available."""
-        return await command_available("which", "snap")
+        return command_on_path("snap")
 
     async def check_updates(self) -> list[Package]:
         """Check for available Snap updates using snap refresh --list."""

@@ -4,7 +4,7 @@ import asyncio
 import re
 from collections.abc import Sequence
 
-from ..utils import command_available
+from ..utils import command_on_path
 from .base import (
     BaseUpdater,
     Package,
@@ -29,7 +29,7 @@ class PacmanUpdater(BaseUpdater):
 
     async def check_available(self) -> bool:
         """Check if Pacman is available on the system."""
-        return await command_available("which", "pacman")
+        return command_on_path("pacman")
 
     async def check_updates(self) -> list[Package]:
         """Check for available Pacman updates using pacman -Qu."""
@@ -37,7 +37,7 @@ class PacmanUpdater(BaseUpdater):
 
         try:
             # Use checkupdates if available (from pacman-contrib) as it doesn't need root
-            if await command_available("which", "checkupdates"):
+            if command_on_path("checkupdates"):
                 proc = await asyncio.create_subprocess_exec(
                     "checkupdates",
                     stdout=asyncio.subprocess.PIPE,

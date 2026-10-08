@@ -3,7 +3,7 @@
 import asyncio
 import re
 
-from ..utils import command_available
+from ..utils import command_on_path
 from .base import (
     BaseUpdater,
     Package,
@@ -28,10 +28,10 @@ class DnfUpdater(BaseUpdater):
 
     async def check_available(self) -> bool:
         """Check if DNF is available (prefers dnf5 over dnf)."""
-        if await command_available("which", "dnf5"):
+        if command_on_path("dnf5"):
             self._dnf_command = "dnf5"
             return True
-        if await command_available("which", "dnf"):
+        if command_on_path("dnf"):
             self._dnf_command = "dnf"
             return True
         return False

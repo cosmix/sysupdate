@@ -1,6 +1,7 @@
 """Utility modules for parsing and logging."""
 
 import asyncio
+import shutil
 import time
 
 from .logging import get_log_path, setup_logging
@@ -50,6 +51,11 @@ async def command_available(command: str, *args: str) -> bool:
     return result
 
 
+def command_on_path(name: str) -> bool:
+    """Return True if an executable named ``name`` is found on PATH."""
+    return shutil.which(name) is not None
+
+
 def invalidate_cache(command: str | None = None) -> None:
     """Invalidate command availability cache.
 
@@ -70,5 +76,6 @@ __all__ = [
     "setup_logging",
     "get_log_path",
     "command_available",
+    "command_on_path",
     "invalidate_cache",
 ]
