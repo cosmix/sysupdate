@@ -169,3 +169,7 @@ app.py orchestrates updaters via asyncio.gather():
 - PYAPP env var validation: filename must contain 'sysupdate', must be executable
 - Atomic binary replacement via `os.replace()` (TOCTOU fix)
 - Version comparison: `_is_newer_version()` with `_compare_dotted_versions()` fallback for non-PEP-440
+
+## Updater run order
+
+Pacman -> Omarchy migrations -> AUR run in sequence; everything else is concurrent. User-level tools run as SUDO_USER. See [architecture/updater-ordering](architecture/updater-ordering.md).
