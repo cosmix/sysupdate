@@ -46,7 +46,7 @@ from .updaters.pacman import PacmanUpdater
 from .updaters.snap import SnapUpdater
 from .utils.aria2 import prompt_install_aria2
 from .utils.logging import get_log_dir, setup_logging
-from .utils.omarchy import OMARCHY_OVERWRITE_ARGS, is_omarchy
+from .utils.omarchy import OMARCHY_OVERWRITE_ARGS, OMARCHY_PACMAN_ENV, is_omarchy
 
 
 @dataclass
@@ -75,13 +75,17 @@ class SysUpdateCLI:
         self._use_ascii = not self._supports_unicode()
         self._sep = "|" if self._use_ascii else "·"
         self._animate = not no_animation
+        omarchy = is_omarchy()
         self._updaters = [
             UpdaterConfig(AptUpdater(), "APT", max_pkg_len=12),
             UpdaterConfig(FlatpakUpdater(), "Flatpak", max_pkg_len=10),
             UpdaterConfig(SnapUpdater(), "Snap", max_pkg_len=12),
             UpdaterConfig(DnfUpdater(), "DNF", max_pkg_len=12),
             UpdaterConfig(
-                PacmanUpdater(OMARCHY_OVERWRITE_ARGS if is_omarchy() else ()),
+                PacmanUpdater(
+                    OMARCHY_OVERWRITE_ARGS if omarchy else (),
+                    OMARCHY_PACMAN_ENV if omarchy else (),
+                ),
                 "Pacman",
                 max_pkg_len=12,
             ),

@@ -8,6 +8,8 @@ from .user_exec import user_exec_context, user_home
 
 SYSTEM_OMARCHY_DIR = "/usr/share/omarchy"
 OMARCHY_OVERWRITE_ARGS = ("--overwrite", f"{SYSTEM_OMARCHY_DIR}/*")
+# Omarchy's pre-transaction hook aborts a direct ``pacman -Syu`` without this.
+OMARCHY_PACMAN_ENV = ("OMARCHY_ALLOW_DIRECT_PACMAN=1",)
 
 
 def find_omarchy_migrate(search_path: str | None, home: str) -> str | None:

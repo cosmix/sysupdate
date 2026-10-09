@@ -378,6 +378,30 @@ class TestPacmanUpgrade:
         assert argv[:3] == ("sudo", "pacman", "-Syu")
         assert argv[-2:] == ("--overwrite", "/usr/share/omarchy/*")
 
+    async def test_env_passed_through_sudo_env(self):
+        """Injected env vars survive sudo by going through ``env``."""
+        updater = PacmanUpdater((), ("OMARCHY_ALLOW_DIRECT_PACMAN=1",))
+        mock_check_proc = _make_communicate_process(b"linux 1-1 -> 2-1\n", returncode=0)
+        mock_syu_proc = _make_mock_process(
+            [b"(1/1) upgrading linux\n", b""], returncode=0
+        )
+        with (
+            patch("sysupdate.updaters.pacman.command_on_path", return_value=True),
+            patch(
+                "asyncio.create_subprocess_exec",
+                side_effect=[mock_check_proc, mock_syu_proc],
+            ) as mock_exec,
+        ):
+            await updater._do_upgrade(lambda _: None)
+        argv = mock_exec.call_args_list[1].args
+        assert argv[:5] == (
+            "sudo",
+            "env",
+            "OMARCHY_ALLOW_DIRECT_PACMAN=1",
+            "pacman",
+            "-Syu",
+        )
+
     async def test_upgrade_no_updates(self, updater: PacmanUpdater):
         """When check_updates returns nothing, pacman -Syu is not called."""
         # checkupdates returns exit code 2 (no updates) with empty output

@@ -19,9 +19,11 @@ from .base import (
 class PacmanUpdater(BaseUpdater):
     """Updater for Pacman packages (Arch Linux, Manjaro, EndeavourOS, etc.)."""
 
-    def __init__(self, extra_args: Sequence[str] = ()) -> None:
+    def __init__(self, extra_args: Sequence[str] = (), env: Sequence[str] = ()) -> None:
         super().__init__()
         self._extra_args = tuple(extra_args)
+        # sudo resets the environment, so variables go through ``env``.
+        self._env_prefix = ("env", *env) if env else ()
 
     @property
     def name(self) -> str:
@@ -180,6 +182,7 @@ class PacmanUpdater(BaseUpdater):
             # Run pacman -Syu --noconfirm
             self._process = await asyncio.create_subprocess_exec(
                 "sudo",
+                *self._env_prefix,
                 "pacman",
                 "-Syu",
                 "--noconfirm",
