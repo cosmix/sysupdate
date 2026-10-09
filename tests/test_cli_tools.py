@@ -84,7 +84,9 @@ class TestCliToolUpdater:
             _version_proc("1.0.0\n"),
         ]
         with (
-            patch("shutil.which", return_value="/home/alice/.local/bin/claude") as which,
+            patch(
+                "shutil.which", return_value="/home/alice/.local/bin/claude"
+            ) as which,
             patch("asyncio.create_subprocess_exec", side_effect=procs) as mock_exec,
         ):
             assert await updater.check_available() is True
@@ -145,6 +147,24 @@ class TestCliToolUpdater:
         assert packages == []
         assert success is False
         assert error == "permission denied"
+
+    @pytest.mark.asyncio
+    async def test_package_managed_install_is_not_a_failure(self):
+        updater = CliToolUpdater("codex", "Codex CLI")
+        procs = [
+            _version_proc("codex-cli 0.40.0\n"),
+            _update_proc(
+                [
+                    b"Error: Could not detect the Codex installation method. "
+                    b"Please update manually: https://developers.openai.com/codex/cli/\n",
+                    b"",
+                ],
+                returncode=1,
+            ),
+        ]
+        with patch("asyncio.create_subprocess_exec", side_effect=procs):
+            packages, success, error = await updater._do_upgrade(lambda _: None)
+        assert (packages, success, error) == ([], True, "")
 
     @pytest.mark.asyncio
     async def test_nonzero_exit_without_output(self, updater):

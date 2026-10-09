@@ -16,6 +16,13 @@ from .base import (
 
 _VERSION_PATTERN = re.compile(r"\d+(?:\.\d+)+\S*")
 
+# Output that means a system package manager owns the install, so the tool
+# cannot update itself and that package manager's updater handles it.
+_PACKAGE_MANAGED_MARKERS = (
+    "managed by a package manager",
+    "could not detect the codex installation method",
+)
+
 
 class CliToolUpdater(BaseUpdater):
     """Runs ``<command> update`` for a CLI tool that updates itself."""
@@ -88,12 +95,18 @@ class CliToolUpdater(BaseUpdater):
             )
         )
         last_line = ""
+        package_managed = False
         async for line in read_process_lines(stdout):
             last_line = line
+            lowered = line.lower()
+            if any(marker in lowered for marker in _PACKAGE_MANAGED_MARKERS):
+                package_managed = True
             if self._logger:
                 self._logger.log(line)
         await self._process.wait()
 
+        if package_managed:
+            return [], True, ""
         if self._process.returncode != 0:
             return [], False, last_line or f"{self._command} update failed"
 
