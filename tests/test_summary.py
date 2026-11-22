@@ -22,7 +22,7 @@ def console_text(console: Console) -> str:
 
 
 def make_console() -> Console:
-    return Console(file=StringIO(), width=100, color_system="truecolor")
+    return Console(file=StringIO(), width=100, color_system="truecolor", no_color=False)
 
 
 def empty_results(**overrides) -> dict:
@@ -89,6 +89,7 @@ class TestManagerAccents:
             "mise",
             "Claude",
             "Codex",
+            "Antigravity",
         }
 
     def test_accents_are_hex_colors(self):

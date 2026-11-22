@@ -102,6 +102,7 @@ class SysUpdateCLI:
             UpdaterConfig(
                 CliToolUpdater("codex", "Codex CLI"), "Codex", max_pkg_len=12
             ),
+            UpdaterConfig(CliToolUpdater("agy", "Antigravity CLI"), "Antigravity"),
         ]
 
     def _supports_unicode(self) -> bool:

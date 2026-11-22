@@ -29,6 +29,7 @@ MANAGER_ACCENTS = {
     "mise": "#eab308",
     "Claude": "#f97316",
     "Codex": "#10b981",
+    "Antigravity": "#4285f4",
 }
 
 # Width of summary section rules and of the per-manager count bars
@@ -65,6 +66,9 @@ TABLE_CONFIG = {
     "mise": {"title": "mise Tools", "name_col": "Tool", "show_versions": True},
     "Claude": {"title": "Claude Code", "name_col": "Tool", "show_versions": True},
     "Codex": {"title": "Codex CLI", "name_col": "Tool", "show_versions": True},
+    "Antigravity": {
+        "title": "Antigravity CLI", "name_col": "Tool", "show_versions": True
+    },
 }
 
 

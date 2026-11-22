@@ -21,9 +21,10 @@ class TestSysUpdateCLI:
             assert cli.dry_run is False
             assert isinstance(cli.console, Console)
             assert cli._updaters is not None
-            assert (
-                len(cli._updaters) == 10
-            )  # APT, Flatpak, Snap, DNF, Pacman, Omarchy, AUR, mise, Claude, Codex
+            assert len(cli._updaters) == 11
+            agy = next(cfg for cfg in cli._updaters if cfg.label == "Antigravity")
+            assert agy.updater.name == "Antigravity CLI"
+            assert agy.updater._command == "agy"
 
     def test_instantiation_with_options(self):
         """Test CLI with verbose and dry_run options."""

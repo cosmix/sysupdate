@@ -18,7 +18,7 @@ A fast, beautiful CLI for managing system updates on Linux. Runs package manager
 | mise            | All distributions                    |
 | Omarchy         | Omarchy (migrations)                 |
 
-Also updates these CLI tools when installed: Claude Code (`claude update`) and Codex CLI (`codex update`). Under `sudo` they run as the invoking user, so per-user installs in `~/.local/bin` are found and stay owned by that user. A dry run lists nothing for them, since neither has a check-only mode.
+When installed, Claude Code, Codex CLI, and Antigravity CLI are updated with `claude update`, `codex update`, and `agy update`, respectively. Under `sudo` they run as the invoking user, so per-user installs in `~/.local/bin` are found and stay owned by that user. These tools are skipped during dry runs.
 
 AUR updates use `yay` (or `paru` when yay is missing) and run as the invoking user, since makepkg refuses to run as root; they are skipped when sysupdate runs as root without `sudo`. mise tools are upgraded with `mise upgrade`, also as the invoking user. On Omarchy, pending migrations are applied with `omarchy-migrate`, and Pacman runs with `--overwrite /usr/share/omarchy/*` as Omarchy's own updater does.
 
@@ -122,7 +122,7 @@ Narrow or non-Unicode terminals automatically fall back to compact ASCII art._
 - At least one supported package manager (APT, DNF, or Pacman)
 - `flatpak` (optional)
 - `snap` (optional)
-- `claude` / `codex` (optional, updated via their own `update` command)
+- `claude` / `codex` / `agy` (optional, updated via their own `update` command)
 - `aria2` (optional, for parallel APT downloads)
 
 ## Log Files
@@ -138,6 +138,7 @@ sysupdate_YYYYMMDD_HHMMSS_flatpak.log
 sysupdate_YYYYMMDD_HHMMSS_snap.log
 sysupdate_YYYYMMDD_HHMMSS_claude.log
 sysupdate_YYYYMMDD_HHMMSS_codex.log
+sysupdate_YYYYMMDD_HHMMSS_agy.log
 ```
 
 ## Testing
