@@ -43,9 +43,7 @@ sysupdate/
 
 ## File Naming
 
-- Python files use `snake_case.py`
-- Test files use `test_<module>.py` pattern
-- Configuration: `pyproject.toml` (PEP 517/518)
+Python modules use snake_case names. Test modules are named test_ followed by the module they cover (tests/test_dnf_updater.py covers sysupdate/updaters/dnf.py). Configuration lives in `pyproject.toml` (PEP 517/518).
 
 ## Code Style
 

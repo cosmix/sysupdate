@@ -30,3 +30,10 @@
 **What happened:** test_run_update_progress_callback had 4 entries in mock side_effect but only 3 subprocess calls are made by \_do_upgrade(). The duplicate mock_check_proc caused wrong mocks to be used for \_get_current_versions and upgrade process.
 **Why:** Comment said "First check in run_update, Second check in \_run_dnf_upgrade" but BaseUpdater.run_update() doesn't call check_updates() for non-dry-run — it delegates directly to \_do_upgrade().
 **How to avoid:** Count actual subprocess calls in the code path being tested before setting up side_effect lists. Also set `process.kill = MagicMock()` (not AsyncMock) since Process.kill() is synchronous.
+
+## Per-user CLI updaters ran as root (cli_tools, 2026-10-07)
+
+**What happened:** The Claude Code / Codex updaters (`sysupdate/updaters/cli_tools.py`) ran `claude update` and `codex update` as the process user. sysupdate is normally run as root (`sudo sysupdate`), so the tools would be updated (or not found) in root's environment instead of the invoking user's.
+**Why:** Assumed sysupdate runs unprivileged and escalates via `sudo` per command; never confirmed how it is launched.
+**Prevention:** sysupdate runs as root. Anything installed per-user (under `~/.local/bin` etc.) must run as `SUDO_USER` with that user's HOME and PATH. A login shell (`zsh -lc`) does not find `~/.local/bin` on this machine (PATH is set in .zshrc), so resolve binaries explicitly.
+**Fix:** cli_tools drops to `SUDO_USER` (uid/gid/groups, HOME, PATH with `~/.local/bin`) when euid is 0.

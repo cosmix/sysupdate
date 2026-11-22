@@ -13,3 +13,11 @@ sysupdate/_version.py
 sysupdate-local
 
 node_modules
+
+# loom workspace state
+.loom/work/
+.loom/work
+
+# loom worktrees
+.worktrees/
+.worktrees
